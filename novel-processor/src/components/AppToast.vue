@@ -24,7 +24,6 @@ const { toast } = useToast()
   gap: 10px;
   max-width: min(560px, calc(100vw - 40px));
   padding: 12px 20px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: rgb(255 255 255 / 94%);
   box-shadow: 0 18px 40px rgb(49 83 105 / 16%);
@@ -32,10 +31,6 @@ const { toast } = useToast()
   font-size: 12.5px;
   color: var(--ink);
   transform: translateX(-50%);
-}
-
-.toast--error {
-  border-color: rgb(214 158 158 / 50%);
 }
 
 .toast--error .status-dot {

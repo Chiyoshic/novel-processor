@@ -72,7 +72,6 @@ defineProps<{
   gap: 9px;
   margin-left: auto;
   padding: 8px 15px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: rgb(255 255 255 / 60%);
   color: var(--muted);
@@ -83,7 +82,6 @@ defineProps<{
 }
 
 .header-state.is-offline {
-  border-color: rgb(214 158 158 / 45%);
   background: rgb(214 158 158 / 10%);
   color: #9c6a6a;
 }

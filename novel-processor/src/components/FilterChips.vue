@@ -46,11 +46,6 @@ const model = defineModel<string>({ default: '' })
   align-items: flex-start;
   gap: 14px;
   padding: 9px 0;
-  border-top: 1px solid var(--line);
-}
-
-.filter-row:first-child {
-  border-top: 0;
 }
 
 .filter-label {
@@ -75,7 +70,6 @@ const model = defineModel<string>({ default: '' })
   align-items: center;
   gap: 6px;
   padding: 5px 11px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: rgb(255 255 255 / 62%);
   color: var(--muted);
@@ -87,13 +81,11 @@ const model = defineModel<string>({ default: '' })
 
 .chip-btn:hover {
   background: var(--white);
-  border-color: rgb(106 158 205 / 45%);
   color: var(--blue-dark);
 }
 
 .chip-btn.active {
   background: var(--blue);
-  border-color: var(--blue);
   color: #fff;
 }
 

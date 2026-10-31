@@ -69,7 +69,6 @@ function formatNumber(n: number | null): string {
   flex-direction: column;
   min-height: 236px;
   padding: 20px 20px 16px;
-  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: rgb(255 255 255 / 52%);
   cursor: pointer;
@@ -78,7 +77,6 @@ function formatNumber(n: number | null): string {
 
 .card:hover {
   background: var(--white);
-  border-color: rgb(106 158 205 / 50%);
   transform: translateY(-4px);
   box-shadow: 0 16px 34px rgb(49 83 105 / 11%);
 }

@@ -72,7 +72,6 @@ function submit(): void {
 .import-band {
   position: relative;
   padding: 18px 0 20px;
-  border-bottom: 1px solid var(--line);
   background: rgb(255 255 255 / 46%);
 }
 
@@ -93,14 +92,12 @@ function submit(): void {
   flex: 1;
   min-width: 0;
   padding: 4px 4px 4px 18px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--white);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .input-shell:focus-within {
-  border-color: rgb(106 158 205 / 55%);
   box-shadow: 0 10px 26px rgb(49 83 105 / 9%);
 }
 

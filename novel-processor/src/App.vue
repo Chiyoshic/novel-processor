@@ -44,7 +44,6 @@ onMounted(() => void load())
   gap: 16px;
   margin-top: auto;
   padding: 26px 0 24px;
-  border-top: 1px solid var(--line);
 }
 
 .footer-name {

@@ -123,7 +123,6 @@ onUnmounted(() => document.removeEventListener('pointerdown', outside))
   min-width: 148px;
   height: 44px;
   padding: 0 12px 0 16px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--white);
   color: var(--ink);
@@ -135,7 +134,6 @@ onUnmounted(() => document.removeEventListener('pointerdown', outside))
 
 .trigger:hover:not(:disabled),
 .trigger[aria-expanded='true'] {
-  border-color: rgb(106 158 205 / 55%);
   box-shadow: 0 8px 20px rgb(49 83 105 / 8%);
 }
 
@@ -186,7 +184,6 @@ onUnmounted(() => document.removeEventListener('pointerdown', outside))
   width: max-content;
   max-width: 280px;
   padding: 6px;
-  border: 1px solid rgb(202 220 229 / 85%);
   border-radius: 18px;
   background: rgb(255 255 255 / 97%);
   box-shadow: 0 18px 40px rgb(49 83 105 / 14%);

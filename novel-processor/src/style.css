@@ -46,6 +46,18 @@
   box-sizing: border-box;
 }
 
+/*
+ * 表单控件一律去掉 UA 默认边框。
+ * 本项目所有描边都由布局与背景表达，一旦某条自定义 border 被删掉，
+ * <button> 会露出浏览器默认的 `2px outset`，看起来像 3D 按钮。
+ */
+button,
+input,
+select,
+textarea {
+  border: 0;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -139,7 +151,6 @@ input {
   align-items: center;
   gap: 14px;
   padding: 11px 14px 11px 20px;
-  border: 1px solid transparent;
   border-radius: 999px;
   background: var(--blue);
   color: #fff;
@@ -162,13 +173,11 @@ input {
 
 .pill--ghost {
   background: transparent;
-  border-color: var(--line);
   color: var(--ink);
 }
 
 .pill--ghost:hover:not(:disabled) {
   background: var(--white);
-  border-color: rgb(106 158 205 / 55%);
   box-shadow: none;
 }
 
@@ -221,7 +230,6 @@ input {
   gap: 6px;
   padding: 4px 9px;
   border-radius: 999px;
-  border: 1px solid var(--line);
   background: rgb(255 255 255 / 60%);
   color: var(--muted);
   font-family: var(--mono);
@@ -231,13 +239,11 @@ input {
 }
 
 .chip--accent {
-  border-color: rgb(106 158 205 / 40%);
   background: var(--blue-soft);
   color: var(--blue-dark);
 }
 
 .chip--done {
-  border-color: rgb(121 194 172 / 45%);
   background: rgb(121 194 172 / 12%);
   color: #4f8d7b;
 }

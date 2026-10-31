@@ -248,13 +248,11 @@ onMounted(() => void load())
   font-size: 11.5px;
   color: var(--muted);
   cursor: pointer;
-  border-bottom: 1px solid transparent;
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 
 .text-btn:hover:not(:disabled) {
   color: var(--blue-dark);
-  border-color: rgb(63 113 156 / 40%);
 }
 
 .text-btn:disabled {
@@ -274,7 +272,6 @@ onMounted(() => void load())
   list-style: none;
   margin: 22px 0 0;
   padding: 0;
-  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: rgb(255 255 255 / 46%);
   overflow: hidden;
@@ -286,11 +283,6 @@ onMounted(() => void load())
   justify-content: space-between;
   gap: 20px;
   padding: 16px 20px;
-  border-top: 1px solid var(--line);
-}
-
-.row:first-child {
-  border-top: 0;
 }
 
 .row-main {
@@ -334,12 +326,7 @@ onMounted(() => void load())
   font-size: 11.5px;
   color: #b4544f;
   cursor: pointer;
-  border-bottom: 1px solid transparent;
   transition: border-color 0.2s ease;
-}
-
-.text-danger:hover:not(:disabled) {
-  border-color: rgb(180 84 79 / 45%);
 }
 
 .state {
@@ -349,7 +336,6 @@ onMounted(() => void load())
   gap: 12px;
   padding: 78px 20px;
   margin-top: 22px;
-  border: 1px dashed #cfdde5;
   border-radius: var(--radius-lg);
   text-align: center;
 }

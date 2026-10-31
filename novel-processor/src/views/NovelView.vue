@@ -227,13 +227,11 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--muted);
   cursor: pointer;
-  border-bottom: 1px solid transparent;
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 
 .text-btn:hover:not(:disabled) {
   color: var(--blue-dark);
-  border-color: rgb(63 113 156 / 40%);
 }
 
 .text-btn:disabled {
@@ -249,12 +247,7 @@ onUnmounted(() => {
   font-size: 11px;
   color: #b4544f;
   cursor: pointer;
-  border-bottom: 1px solid transparent;
   transition: border-color 0.2s ease;
-}
-
-.text-danger:hover:not(:disabled) {
-  border-color: rgb(180 84 79 / 45%);
 }
 
 .text-danger:disabled {
@@ -268,7 +261,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 14px;
   padding: 90px 20px;
-  border: 1px dashed #cfdde5;
   border-radius: var(--radius-lg);
   text-align: center;
 }

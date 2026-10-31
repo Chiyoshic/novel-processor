@@ -268,7 +268,6 @@ onUnmounted(() => {
   font-size: 11.5px;
   color: var(--muted);
   cursor: pointer;
-  border-bottom: 1px solid transparent;
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 
@@ -280,7 +279,6 @@ onUnmounted(() => {
 
 .text-btn:hover {
   color: var(--blue-dark);
-  border-color: rgb(63 113 156 / 40%);
 }
 
 .toolbar {
@@ -298,14 +296,12 @@ onUnmounted(() => {
   min-width: 0;
   height: 44px;
   padding: 0 18px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--white);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .search-shell:focus-within {
-  border-color: rgb(106 158 205 / 55%);
   box-shadow: 0 10px 26px rgb(49 83 105 / 9%);
 }
 
@@ -340,7 +336,6 @@ onUnmounted(() => {
 .filters {
   margin-top: 14px;
   padding: 6px 16px;
-  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: rgb(255 255 255 / 40%);
 }
@@ -359,7 +354,6 @@ onUnmounted(() => {
   gap: 12px;
   padding: 78px 20px;
   margin-top: 18px;
-  border: 1px dashed #cfdde5;
   border-radius: var(--radius-lg);
   text-align: center;
 }

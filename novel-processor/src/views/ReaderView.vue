@@ -218,7 +218,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 .sheet {
   max-width: 780px;
   padding: 34px 40px 30px;
-  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--white);
   box-shadow: var(--shadow-soft);
@@ -226,7 +225,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 .head {
   padding-bottom: 22px;
-  border-bottom: 1px solid var(--line);
 }
 
 .head h1 {
@@ -292,14 +290,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   word-break: break-word;
 }
 
-.preface {
-  border-left: 2px solid rgb(106 158 205 / 45%);
-}
-
-.afterword {
-  border-left: 2px solid #d9e2e7;
-}
-
 .pager {
   display: flex;
   align-items: center;
@@ -307,7 +297,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   gap: 12px;
   margin-top: 40px;
   padding-top: 20px;
-  border-top: 1px solid var(--line);
 }
 
 .state {

@@ -23,7 +23,15 @@ const collapsed = ref<Set<string>>(new Set())
 const summaryOpen = ref(false)
 
 const summary = computed(() => props.catalog.meta.summary.trim())
-const summaryIsLong = computed(() => summary.value.length > 140 || summary.value.split('\n').length > 4)
+/**
+ * なろう 的简介用空行分段，且每段自带全角缩进。
+ * 直接 pre-wrap 渲染会让空行占满整行高度、整块显得很散；
+ * 折叠成单换行既保留分段，又紧凑得多。
+ */
+const summaryDisplay = computed(() => summary.value.replace(/\n{2,}/g, '\n'))
+const summaryIsLong = computed(
+  () => summaryDisplay.value.length > 140 || summaryDisplay.value.split('\n').length > 4,
+)
 /** 内容语言：决定标题与正文用日文还是中文衬线字形 */
 const lang = computed(() => detectLang(props.catalog.meta.title, props.catalog.meta.summary))
 
@@ -163,7 +171,7 @@ watch(
     <div v-if="summary" class="summary-block">
       <p class="eyebrow eyebrow--faint">あらすじ</p>
       <p class="summary-text serif" :class="{ clamped: summaryIsLong && !summaryOpen }" :lang="lang">
-        {{ summary }}
+        {{ summaryDisplay }}
       </p>
       <button v-if="summaryIsLong" class="summary-toggle" type="button" @click="summaryOpen = !summaryOpen">
         {{ summaryOpen ? '收起' : '展开全文' }}
@@ -278,7 +286,6 @@ watch(
 .detail {
   min-width: 0;
   padding: 26px 28px 22px;
-  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--white);
   box-shadow: var(--shadow-soft);
@@ -291,12 +298,20 @@ watch(
   gap: 24px;
 }
 
+/* 标题尽量占满可用宽度：放得下就单行，放不下才自然折行 */
+.head-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .detail-title {
   margin-top: 12px;
   font-size: clamp(24px, 2.4vw, 34px);
-  line-height: 1.12;
-  letter-spacing: -0.055em;
-  max-width: 620px;
+  font-weight: 700;
+  line-height: 1.2;
+  /* 中文/日文标题用负字距会挤字，这里保持 0 */
+  letter-spacing: 0;
+  text-wrap: balance;
 }
 
 .head-meta {
@@ -324,13 +339,8 @@ watch(
   font-size: 11px;
   font-weight: 600;
   color: var(--blue-dark);
-  border-bottom: 1px solid rgb(63 113 156 / 30%);
   padding-bottom: 2px;
   transition: border-color 0.2s ease;
-}
-
-.source-link:hover {
-  border-color: var(--blue-dark);
 }
 
 .summary-block {
@@ -344,16 +354,16 @@ watch(
   margin-top: 5px;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 12.5px;
-  line-height: 1.78;
-  color: var(--muted);
-  letter-spacing: 0.01em;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #55656f;
+  letter-spacing: 0;
 }
 
 .summary-text.clamped {
-  max-height: 7.2em;
+  max-height: 5.4em;
   overflow: hidden;
-  mask-image: linear-gradient(#000 55%, transparent 100%);
+  mask-image: linear-gradient(#000 72%, transparent 100%);
 }
 
 .summary-toggle {
@@ -365,12 +375,7 @@ watch(
   font-weight: 600;
   color: var(--blue-dark);
   cursor: pointer;
-  border-bottom: 1px solid rgb(63 113 156 / 30%);
   transition: border-color 0.2s ease;
-}
-
-.summary-toggle:hover {
-  border-color: var(--blue-dark);
 }
 
 .stat-row {
@@ -378,18 +383,14 @@ watch(
   grid-template-columns: repeat(4, 1fr);
   margin-top: 24px;
   padding: 18px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
 }
 
 .stat {
   padding: 0 20px;
-  border-left: 1px solid var(--line);
 }
 
 .stat:first-child {
   padding-left: 0;
-  border-left: 0;
 }
 
 .stat strong {
@@ -445,7 +446,6 @@ watch(
   gap: 9px;
   margin-top: 12px;
   padding: 8px 14px;
-  border: 1px solid rgb(106 158 205 / 32%);
   border-radius: 999px;
   background: var(--blue-soft);
   font-family: var(--mono);
@@ -495,7 +495,6 @@ watch(
 .range-field input {
   width: 168px;
   padding: 9px 14px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--paper);
   font-size: 12px;
@@ -505,7 +504,6 @@ watch(
 
 .range-field input:focus {
   background: var(--white);
-  border-color: rgb(106 158 205 / 55%);
 }
 
 .toolbar-actions {
@@ -519,7 +517,6 @@ watch(
   align-items: center;
   gap: 7px;
   padding: 7px 10px 7px 13px;
-  border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--paper);
 }
@@ -541,7 +538,6 @@ watch(
   justify-content: space-between;
   margin-top: 28px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
 }
 
 .list-tools {
@@ -702,7 +698,6 @@ watch(
   }
   .stat:nth-child(odd) {
     padding-left: 0;
-    border-left: 0;
   }
   .toolbar {
     align-items: stretch;
