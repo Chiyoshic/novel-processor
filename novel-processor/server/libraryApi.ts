@@ -7,15 +7,18 @@
  * 不需要额外进程，也不需要把抓取逻辑复制一份到服务端。
  *
  * 所有业务逻辑都在 `src/lib` 里，这里只做「路由 + 序列化」。
+ *
+ * 注：对 `src/lib` 的依赖使用**动态 import**，
+ * 这样 Vite 的配置文件加载器不会去解析这些源码模块
+ * （否则会触发 "config uses features unsupported by configLoader: native" 警告）。
  */
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
-import { createNovelLibrary } from '../src/lib/library'
-import { parseEpisodeRange } from '../src/lib/range'
-import type { NovelRecord } from '../src/lib/types'
-import { FsEpisodeStore } from '../scripts/fs-store'
+import type { NovelLibrary } from '../src/lib/library'
+import type { EpisodeStore } from '../src/lib/store'
+import type { NovelRef, NovelRecord } from '../src/lib/types'
 
 interface LibraryEntry {
   site: string
@@ -33,12 +36,19 @@ interface LibraryEntry {
   tags: string[]
 }
 
+interface Deps {
+  library: NovelLibrary
+  store: EpisodeStore
+  novelsDir: string
+  episodesDir: string
+  parseRange: (spec: string) => number[]
+}
+
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
-  const body = JSON.stringify(payload)
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.setHeader('Cache-Control', 'no-store')
-  res.end(body)
+  res.end(JSON.stringify(payload))
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -52,12 +62,8 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   }
 }
 
-export function libraryApiPlugin(projectRoot: string): Plugin {
-  const dataDir = resolve(projectRoot, 'data')
-  const novelsDir = join(dataDir, 'novels')
-  const episodesDir = join(dataDir, 'episodes')
-  const store = new FsEpisodeStore(episodesDir)
-  const library = createNovelLibrary({ store, concurrency: 4 })
+function createHandler(deps: Deps) {
+  const { library, store, novelsDir, episodesDir, parseRange } = deps
 
   async function readCatalog(site: string, novelId: string): Promise<NovelRecord | null> {
     try {
@@ -88,7 +94,13 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
         if (!file.endsWith('.json')) continue
         const record = await readCatalog(site, file.slice(0, -5))
         if (!record) continue
-        const downloaded = await store.list({ site, novelId: record.source.novelId, canonicalUrl: record.source.url, variant: null })
+        const ref: NovelRef = {
+          site,
+          novelId: record.source.novelId,
+          canonicalUrl: record.source.url,
+          variant: null,
+        }
+        const downloaded = await store.list(ref)
         entries.push({
           site,
           novelId: record.source.novelId,
@@ -109,28 +121,17 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
     return entries.sort((a, b) => (b.lastEpisodeAt ?? '').localeCompare(a.lastEpisodeAt ?? ''))
   }
 
-  return {
-    name: 'novel-library-api',
-    configureServer(server) {
-      server.middlewares.use('/api', (req, res, next) => {
-        void handle(req, res, next)
-      })
-    },
-  }
-
-  async function handle(req: IncomingMessage, res: ServerResponse, next: () => void): Promise<void> {
+  return async function handle(req: IncomingMessage, res: ServerResponse, next: () => void): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const segments = url.pathname.split('/').filter(Boolean)
     const method = req.method ?? 'GET'
 
     try {
-      // GET /api/sites
       if (segments.length === 1 && segments[0] === 'sites' && method === 'GET') {
         sendJson(res, 200, library.sites)
         return
       }
 
-      // GET /api/library
       if (segments.length === 1 && segments[0] === 'library' && method === 'GET') {
         sendJson(res, 200, await listLibrary())
         return
@@ -152,11 +153,10 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
         return
       }
 
-      // /api/library/:site/:novelId[/...]
       if (segments[0] === 'library' && segments.length >= 3) {
         const site = segments[1]
         const novelId = segments[2]
-        const ref = { site, novelId, canonicalUrl: '', variant: null }
+        const ref: NovelRef = { site, novelId, canonicalUrl: '', variant: null }
 
         if (segments.length === 3 && method === 'GET') {
           const record = await readCatalog(site, novelId)
@@ -189,8 +189,7 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
 
         // GET /api/library/:site/:id/episodes/:index
         if (segments[3] === 'episodes' && segments.length === 5 && method === 'GET') {
-          const index = Number(segments[4])
-          const content = await store.read(ref, index)
+          const content = await store.read(ref, Number(segments[4]))
           if (!content) {
             sendJson(res, 404, { error: '该话尚未下载' })
             return
@@ -216,7 +215,7 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
           let indices: number[] | undefined
           if (range) {
             try {
-              indices = parseEpisodeRange(range)
+              indices = parseRange(range)
             } catch (err) {
               sendJson(res, 400, { error: err instanceof Error ? err.message : '区间格式错误' })
               return
@@ -224,7 +223,7 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
           } else if (!all) {
             // 默认：只补缺失的话
             const have = new Set(await store.list(ref))
-            indices = record.episodes.map((e) => e.index).filter((i) => !have.has(i))
+            indices = record.episodes.map((episode) => episode.index).filter((i) => !have.has(i))
           }
 
           const result = await library.downloadEpisodes(record.source.url, {
@@ -248,5 +247,30 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) })
     }
+  }
+}
+
+export function libraryApiPlugin(projectRoot: string): Plugin {
+  const dataDir = resolve(projectRoot, 'data')
+  const novelsDir = join(dataDir, 'novels')
+  const episodesDir = join(dataDir, 'episodes')
+
+  return {
+    name: 'novel-library-api',
+    async configureServer(server) {
+      const [{ createNovelLibrary }, { parseEpisodeRange }, { FsEpisodeStore }] = await Promise.all([
+        import('../src/lib/library'),
+        import('../src/lib/range'),
+        import('../scripts/fs-store'),
+      ])
+
+      const store = new FsEpisodeStore(episodesDir)
+      const library = createNovelLibrary({ store, concurrency: 4 })
+      const handler = createHandler({ library, store, novelsDir, episodesDir, parseRange: parseEpisodeRange })
+
+      server.middlewares.use('/api', (req, res, next) => {
+        void handler(req, res, next)
+      })
+    },
   }
 }

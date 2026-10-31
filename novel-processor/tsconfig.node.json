@@ -6,8 +6,10 @@
     "types": ["node"],
     "skipLibCheck": true,
 
-    /* Bundler mode */
-    "module": "nodenext",
+    /* Bundler mode：vite.config.ts 及其引用的服务端插件由 esbuild 打包，
+       用 bundler 解析才能与运行时行为一致（nodenext 会强制要求 .js 扩展名）。 */
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",

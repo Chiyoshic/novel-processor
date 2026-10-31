@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
-import { libraryApiPlugin } from './server/libraryApi'
+import { libraryApiPlugin } from './server/libraryApi.ts'
 
 const projectRoot = fileURLToPath(new URL('.', import.meta.url))
 
