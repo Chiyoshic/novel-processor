@@ -153,3 +153,17 @@ test('前端不接受外部 redirect，登录失败和刷新失败不会误认�
   assert.equal(await client.restore(), false); assert.equal(client.user, null)
   await assert.rejects(client.login(username, password), AuthRequestError)
 })
+
+
+test('修改密码 HTTP 接口清除 RT Cookie，前端状态退出，私有 API 拒绝旧 AT', async () => {
+  await fixture(async ({ base, post }) => {
+    const response = await post('login', { username, password })
+    const tokens = await response.json() as AuthTokens
+    const changed = await post('password', { currentPassword: password, newPassword: 'replacement-password-123' }, { Authorization: `Bearer ${tokens.accessToken}`, Cookie: cookie(response) })
+    assert.equal(changed.status, 200); assert.match(changed.headers.get('set-cookie')!, /Max-Age=0/)
+    assert.equal((await fetch(`${base}/api/library`, { headers: { Authorization: `Bearer ${tokens.accessToken}` } })).status, 401)
+    assert.equal((await post('refresh', {}, { Cookie: cookie(response) })).status, 401)
+    assert.equal((await post('login', { username, password: 'replacement-password-123' })).status, 200)
+    assert.equal((await fetch(`${base}/api/library/site/book/translation/initialize`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401)
+  })
+})

@@ -151,7 +151,9 @@ export class AuthService {
   }
   private cookie(req: IncomingMessage, res: ServerResponse, token: string, expiresAt = 0): void {
     const sameSite = this.options.cookieSameSite ?? 'lax'
-    const secure = sameSite === 'none' || this.options.cookieSecure === 'true' || this.options.cookieSecure !== 'false' && (req.headers.origin?.startsWith('https://') || 'encrypted' in req.socket && req.socket.encrypted)
+    let loopback = false
+    try { loopback = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(`http://${req.headers.host}`).hostname) } catch { /* malformed Host is not a local development exception */ }
+    const secure = sameSite === 'none' || this.options.cookieSecure === 'true' || this.options.cookieSecure !== 'false' && (!loopback || req.headers.origin?.startsWith('https://') || 'encrypted' in req.socket && req.socket.encrypted)
     const age = token ? Math.max(0, Math.floor((expiresAt - this.now()) / 1000)) : 0
     res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/api/auth; HttpOnly; SameSite=${sameSite[0]!.toUpperCase() + sameSite.slice(1)}; Max-Age=${age}${secure ? '; Secure' : ''}`)
   }
