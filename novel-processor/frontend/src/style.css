@@ -10,11 +10,15 @@
   --blue-line: #d9e8ef;
   --ink: #172631;
   --ink-soft: #183442;
-  --muted: #6f7d86;
-  --faint: #9ba8ad;
+  --muted: #60717b;
+  --faint: #8799a2;
   --line: #dbe5ea;
   --paper: #f5f8f9;
   --white: #ffffff;
+  --surface-soft: rgb(255 255 255 / 72%);
+  --surface-muted: rgb(255 255 255 / 58%);
+  --chip-bg: #ffffff;
+  --chip-ink: #536874;
 
   --sans: 'Montserrat', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --display: 'Montserrat', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -45,6 +49,98 @@
 * {
   box-sizing: border-box;
 }
+html[data-theme='dark'] {
+  --blue: rgb(126 181 222);
+  --blue-dark: #a4cce7;
+  --blue-soft: #243b49;
+  --blue-line: #385566;
+  --ink: #e8f1f5;
+  --ink-soft: #d5e5eb;
+  --muted: #b3c4cc;
+  --faint: #8fa5af;
+  --line: #344b57;
+  --paper: #111b21;
+  --white: #1d2b33;
+  --surface-soft: rgb(29 43 51 / 92%);
+  --surface-muted: rgb(29 43 51 / 78%);
+  --chip-bg: #263943;
+  --chip-ink: #d5e5eb;
+  --shadow-soft: 0 20px 50px rgb(0 0 0 / 28%);
+  --shadow-lift: 0 16px 36px rgb(0 0 0 / 34%);
+  color-scheme: dark;
+}
+
+html[data-theme='dark'] body {
+  background: var(--paper);
+}
+
+html[data-theme='dark'] .import-band,
+html[data-theme='dark'] .filters,
+html[data-theme='dark'] .rows {
+  background: var(--surface-muted);
+}
+
+html[data-theme='dark'] .card,
+html[data-theme='dark'] .header-state {
+  background: var(--surface-soft);
+}
+
+html[data-theme='dark'] .chip-btn {
+  background: var(--chip-bg);
+  color: var(--chip-ink);
+}
+
+html[data-theme='dark'] .chip-btn.active {
+  background: var(--blue);
+  color: #10212a;
+}
+
+html[data-theme='dark'] .search-shell,
+html[data-theme='dark'] .input-shell,
+html[data-theme='dark'] .trigger,
+html[data-theme='dark'] .sheet,
+html[data-theme='dark'] .detail,
+html[data-theme='dark'] .dialog-card,
+html[data-theme='dark'] .toast {
+  background: var(--white);
+}
+
+html[data-theme='dark'] .summary-block,
+html[data-theme='dark'] .preface,
+html[data-theme='dark'] .afterword,
+html[data-theme='dark'] .range-field input,
+html[data-theme='dark'] .concurrency {
+  background: #17262e;
+}
+
+html[data-theme='dark'] .option:hover,
+html[data-theme='dark'] .option.selected,
+html[data-theme='dark'] .episode:hover {
+  background: var(--blue-soft);
+}
+
+html[data-theme='dark'] .bar {
+  background: #304650;
+}
+
+html[data-theme='dark'] .progress-track {
+  background: #304650;
+}
+
+html[data-theme='dark'] .tag {
+  background: #294655;
+  color: #b9dcf0;
+}
+
+html[data-theme='dark'] .ep-title,
+html[data-theme='dark'] .block {
+  color: #d4e1e6;
+}
+
+html[data-theme='dark'] .footer-note {
+  color: #80949d;
+}
+
 
 /*
  * 表单控件一律去掉 UA 默认边框。
@@ -305,4 +401,22 @@ input {
   .section-wrap { width: calc(100% - 32px); }
   .pill { min-height: 42px; }
   input, select, textarea { font-size: 14px; }
+}
+
+@media (max-width: 720px) {
+  .search-shell {
+    height: 52px !important;
+    min-height: 52px !important;
+    padding-inline: 18px !important;
+  }
+
+  .search-shell input {
+    font-size: 16px !important;
+  }
+
+  .search-icon,
+  .search-icon svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
 }

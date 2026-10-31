@@ -56,7 +56,7 @@ const model = defineModel<string>({ default: '' })
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .chips {
@@ -71,8 +71,8 @@ const model = defineModel<string>({ default: '' })
   gap: 6px;
   padding: 5px 11px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 62%);
-  color: var(--muted);
+  background: var(--chip-bg);
+  color: var(--chip-ink);
   font-size: 11.5px;
   line-height: 1.6;
   cursor: pointer;

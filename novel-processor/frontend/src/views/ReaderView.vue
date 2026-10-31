@@ -17,6 +17,20 @@ const error = ref<string | null>(null)
 
 const episodeIndex = computed(() => Number(props.index))
 const novelTitle = computed(() => catalog.value?.meta.title ?? '')
+const publishedAt = computed(
+  () => catalog.value?.episodes.find((episode) => episode.index === episodeIndex.value)?.publishedAt ?? '',
+)
+
+// Actual paragraphs remain readable when browser Reader discards page CSS.
+function paragraphs(text: string): string[] {
+  return text.replace(/\r\n?/g, '\n').split('\n').filter((line) => line.trim().length > 0)
+}
+
+watch([content, novelTitle], () => {
+  if (content.value) {
+    document.title = [content.value.title, novelTitle.value, 'novel-processor'].filter(Boolean).join(' · ')
+  }
+})
 /** 内容语言：正文用日文还是中文衬线字形 */
 const lang = computed(() =>
   detectLang(novelTitle.value, content.value?.title, content.value?.body.slice(0, 200)),
@@ -105,7 +119,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <main class="reader-page">
-    <nav class="crumbs section-wrap">
+    <nav class="crumbs section-wrap" aria-label="阅读导航">
       <button class="crumb" type="button" @click="backToNovel">← {{ novelTitle || '作品' }}</button>
       <span class="crumb-sep">/</span>
       <span class="crumb-current">第 {{ episodeIndex }} 话</span>
@@ -132,12 +146,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         </button>
       </div>
 
-      <template v-else-if="content">
+      <article
+        v-else-if="content"
+        class="reader-article"
+        itemscope
+        itemtype="https://schema.org/Article"
+        aria-labelledby="episode-title"
+        :lang="lang"
+      >
         <header class="head">
           <p class="eyebrow">{{ novelTitle }}</p>
-          <h1 class="serif" :lang="lang">{{ content.title }}</h1>
-          <div class="meta">
-            <span v-if="publishedText">{{ publishedText }}</span>
+          <h1 id="episode-title" class="serif" itemprop="headline">{{ content.title }}</h1>
+          <p v-if="catalog?.meta.author.name" class="byline" itemprop="author">{{ catalog.meta.author.name }}</p>
+          <div class="meta" aria-label="正文信息">
+            <time v-if="publishedText" :datetime="publishedAt" itemprop="datePublished">{{ publishedText }}</time>
             <span class="dot">·</span>
             <span>{{ content.body.length.toLocaleString('en-US') }} 字</span>
             <template v-if="content.totalEpisodes">
@@ -147,19 +169,27 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           </div>
         </header>
 
-        <article class="prose serif" :lang="lang">
+        <div class="prose serif" :lang="lang" itemprop="articleBody">
           <section v-if="content.preface" class="block preface">
             <p class="block-label">まえがき · 前言</p>
-            <div class="block-text">{{ content.preface }}</div>
+            <div class="block-text">
+              <p v-for="(paragraph, i) in paragraphs(content.preface)" :key="i">{{ paragraph }}</p>
+            </div>
           </section>
-          <div class="block main">{{ content.body }}</div>
+          <div class="block main">
+            <p v-for="(paragraph, i) in paragraphs(content.body)" :key="i">{{ paragraph }}</p>
+          </div>
           <section v-if="content.afterword" class="block afterword">
             <p class="block-label">あとがき · 后记</p>
-            <div class="block-text">{{ content.afterword }}</div>
+            <div class="block-text">
+              <p v-for="(paragraph, i) in paragraphs(content.afterword)" :key="i">{{ paragraph }}</p>
+            </div>
           </section>
-        </article>
+        </div>
 
-        <footer class="pager">
+      </article>
+
+      <nav v-if="content && !loading && !missing && !error" class="pager" aria-label="章节翻页">
           <button class="pill pill--ghost pill--small" type="button" :disabled="!hasPrev" @click="go(-1)">
             <span aria-hidden="true">←</span>
             <span>上一话</span>
@@ -171,8 +201,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             <span>下一话</span>
             <span aria-hidden="true">→</span>
           </button>
-        </footer>
-      </template>
+      </nav>
     </div>
   </main>
 </template>
@@ -221,6 +250,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   border-radius: var(--radius-lg);
   background: var(--white);
   box-shadow: var(--shadow-soft);
+}
+
+.reader-article {
+  display: block;
+}
+
+.byline {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.block p + p {
+  margin-top: 0.5em;
 }
 
 .head {
@@ -325,6 +368,26 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 @keyframes sweep {
   0%, 100% { opacity: 0.25; transform: scaleX(0.6); }
   50% { opacity: 1; transform: scaleX(1); }
+}
+
+@media print {
+  .crumbs,
+  .pager {
+    display: none !important;
+  }
+
+  .reader-page,
+  .sheet {
+    padding: 0;
+    max-width: none;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  .reader-article {
+    max-width: 42rem;
+    margin: 0 auto;
+  }
 }
 
 @media (max-width: 720px) {

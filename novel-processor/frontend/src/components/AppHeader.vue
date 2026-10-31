@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ThemeToggle from '@/components/ThemeToggle.vue'
+
 defineProps<{
   online: boolean
 }>()
@@ -15,6 +17,8 @@ defineProps<{
       </span>
       <span class="brand-name">novel<span>processor</span></span>
     </div>
+
+    <ThemeToggle />
 
     <div class="header-state" :class="{ 'is-offline': !online }">
       <span class="status-dot" :class="{ 'status-dot--live': online }" />

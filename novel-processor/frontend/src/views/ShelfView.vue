@@ -337,7 +337,7 @@ onUnmounted(() => {
   margin-top: 14px;
   padding: 6px 16px;
   border-radius: var(--radius-lg);
-  background: rgb(255 255 255 / 40%);
+  background: var(--surface-muted);
 }
 
 .grid {
