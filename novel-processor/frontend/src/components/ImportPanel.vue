@@ -72,7 +72,7 @@ function submit(): void {
 .import-band {
   position: relative;
   padding: 18px 20px 20px;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  border-radius: var(--radius-lg);
   background: rgb(255 255 255 / 46%);
 }
 
@@ -127,9 +127,10 @@ function submit(): void {
   }
 }
 
-@media (max-width: 580px) {
+@media (max-width: 720px) {
   .import-band {
-    padding: 14px 16px 16px;
+    padding: 12px;
+    border-radius: 24px;
   }
   .input-shell {
     flex-direction: column;
@@ -144,20 +145,24 @@ function submit(): void {
   .input-shell input {
     flex: none;
     width: 100%;
-    min-height: 42px;
-    padding: 0 15px;
+    height: 52px;
+    min-height: 52px;
+    padding: 0 13px;
     border-radius: 999px;
     background: var(--white);
-    font-size: 14px;
+    font-size: 16px;
+    line-height: 1.2;
   }
   .input-shell input:focus {
     box-shadow: 0 10px 26px rgb(49 83 105 / 9%);
   }
   .input-shell .pill {
     width: 100%;
-    min-height: 42px;
+    height: 52px;
+    min-height: 52px;
     justify-content: space-between;
-    font-size: 13px;
+    padding-inline: 13px;
+    font-size: 14px;
   }
 }
 </style>

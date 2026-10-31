@@ -399,19 +399,20 @@ onUnmounted(() => {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
-@media (max-width: 580px) {
+@media (max-width: 720px) {
   .shelf { padding-bottom: 36px; }
-  .shelf-head { flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-top: 20px; }
+  .shelf-head { flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-top: 24px; }
   .head-left { flex-wrap: wrap; gap: 2px 9px; }
-  .head-left h1 { font-size: 25px; }
+  .head-left h1 { font-size: 25px; line-height: 1.1; }
   .summary { font-size: 10px; }
-  .head-right { gap: 12px; }
+  .head-right { gap: 10px; }
   .text-btn { min-height: 40px; display: inline-flex; align-items: center; font-size: 11px; }
-  .toolbar { margin-top: 8px; }
-  .search-shell { height: 44px; padding-inline: 15px; }
-  .search-shell input { font-size: 14px; }
-  .filters { margin-top: 10px; padding: 4px 10px; }
+  .toolbar { margin-top: 10px; }
+  .search-shell { height: 52px; padding-inline: 18px; }
+  .search-shell input { font-size: 16px; }
+  .search-icon, .search-icon svg { width: 20px; height: 20px; }
+  .filters { margin-top: 12px; padding: 5px 12px; border-radius: 24px; }
   .grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-  .state { padding: 56px 16px; }
+  .state { padding: 48px 16px; }
 }
 </style>

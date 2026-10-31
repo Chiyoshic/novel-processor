@@ -248,10 +248,12 @@ onUnmounted(() => document.removeEventListener('pointerdown', outside))
   }
   .trigger {
     width: 100%;
-    min-height: 42px;
-    height: 42px;
+    min-width: 0;
+    height: 52px;
+    min-height: 52px;
     justify-content: space-between;
-    font-size: 12px;
+    padding-inline: 13px;
+    font-size: 16px;
   }
 }
 </style>

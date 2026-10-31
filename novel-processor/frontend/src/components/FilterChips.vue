@@ -109,10 +109,17 @@ const model = defineModel<string>({ default: '' })
     padding-top: 0;
   }
 }
-@media (max-width: 580px) {
-  .filter-row { gap: 8px; }
-  .filter-label { width: 32px; padding-top: 11px; }
-  .chips { min-width: 0; }
-  .chip-btn { min-height: 36px; padding-inline: 10px; font-size: 11px; }
+@media (max-width: 720px) {
+  .filter-row { gap: 6px; padding: 7px 0; }
+  .filter-label { width: 32px; padding-top: 7px; font-size: 10px; }
+  .chips { min-width: 0; gap: 6px; }
+  .chip-btn {
+    height: 42px;
+    min-height: 42px;
+    padding: 0 11px;
+    border-radius: 999px;
+    font-size: 14px;
+    line-height: 1;
+  }
 }
 </style>
