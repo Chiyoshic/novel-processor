@@ -3,6 +3,8 @@ import type { AuthTokens, AuthUser } from '../../../shared/auth'
 export class AuthRequestError extends Error { readonly status: number; constructor(message: string, status: number) { super(message); this.status = status } }
 export function safeReturnPath(value: unknown): string { return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !value.includes('\\') && !/[\r\n]/.test(value) && !value.startsWith('/login') ? value : '/' }
 
+export { normalizeApiBase } from './api-base'
+
 /** AT is memory-only; RT is an HttpOnly cookie. All protected requests, including streams, use this client. */
 export class AuthClient {
   user: AuthUser | null = null

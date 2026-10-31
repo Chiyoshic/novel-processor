@@ -32,9 +32,9 @@ npm run dev
 npm run build
 ```
 
-开发服务器默认把 `/api` 代理到 `http://localhost:64226`。生产环境可让前端托管服务器将 `/api/` 反向代理到后端，或在**构建前**设置 `VITE_API_BASE=https://后端域名/api`。跨域直连时，后端 `CORS_ORIGINS` 应配置前端的完整 origin，例如 `https://frontend.example.com`；多个 origin 使用逗号分隔。HTTPS 前端应通过 HTTPS 访问后端。
+前端不使用 Vite 代理。开发和生产都在 `frontend/.env` 配置 `VITE_API_BASE=https://novels.server.chiyoshi.cn/api`，浏览器直接访问该后端；所有登录、刷新和业务请求共用此配置。缺失或相对地址会报错，不回退到前端域名。该值在构建时写入产物，修改后必须重新构建并部署前端。后端 `CORS_ORIGINS` 需要包含前端完整 origin，例如 `https://novels.chiyoshi.cn`；多个 origin 使用逗号分隔。本地跨域调试也需显式加入对应 localhost origin。HTTPS 前端应通过 HTTPS 访问后端。
 
-前端没有认证机制；当前 API 能修改和永久删除本地书库。不要将端口直接暴露给不可信网络，应通过具备访问控制的网络或反向代理部署。
+前端与 API 已启用 AT/RT 登录鉴权，不开放注册。首次启动需要在后端私有环境变量配置初始密码；登录、刷新、修改密码及部署说明见 `docs/auth.md`。
 
 ## 持久化与备份
 

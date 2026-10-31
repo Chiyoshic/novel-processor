@@ -114,33 +114,17 @@ const library = createNovelLibrary({ store: new MyStore() })
 
 ---
 
-## 4. 浏览器直连站点
+## 4. 前端直连后端 API
 
-站点不返回 CORS 头，浏览器直连会被拦。两条路：
+当前前端不使用 Vite 同源代理，也不在浏览器中直接采集小说站点。采集在 Node 后端执行，浏览器使用 `frontend/.env` 中的绝对 API 地址：
 
-### 4.1 开发期：Vite 同源代理（已配置）
-
-`vite.config.ts` 已配好 `/api/syosetu` 与 `/api/narou` 两个代理，配合 `rewriteUrl` 使用：
-
-```ts
-import { createNovelLibrary, FetchHttpClient } from '@/lib'
-
-const toProxy = (url: string) =>
-  url
-    .replace('https://ncode.syosetu.com', '/api/syosetu')
-    .replace('https://api.syosetu.com', '/api/narou')
-
-const library = createNovelLibrary({
-  http: new FetchHttpClient({ rewriteUrl: toProxy, concurrency: 4, minIntervalMs: 200 }),
-})
+```dotenv
+VITE_API_BASE=https://novels.server.chiyoshi.cn/api
 ```
 
-> 已验证：同一份库代码经代理可完整抓取目录与正文（159 话 / 8 章 / 零告警）。
+登录、刷新、普通请求与模型流式请求均共用该地址。后端域名可以不含路径，此时会自动追加 `/api`；已经包含 `/api` 时不会重复追加。配置缺失或使用相对路径会报错，不会改为请求前端域名。
 
-### 4.2 生产：Node 侧采集
-
-代理只适合开发。线上建议把 `NovelLibrary` 挂在 Node 服务里（直接用 `FsEpisodeStore`），
-前端只读接口返回的 JSON——避免把抓取压力转嫁给用户浏览器，也便于集中限速。
+修改配置后需要重新构建和部署前端。跨域调用需配置后端精确的 CORS 白名单并允许凭据、Authorization 和 X-Requested-With；鉴权说明见 `auth.md`。
 
 ---
 

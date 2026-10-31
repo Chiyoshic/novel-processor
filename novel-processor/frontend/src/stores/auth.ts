@@ -1,8 +1,9 @@
 import { readonly, ref } from 'vue'
 import type { AuthUser } from '@shared/auth'
 import { AuthClient } from '@/lib/auth-client'
+import { normalizeApiBase } from '@/lib/api-base'
 
-const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+const base = normalizeApiBase(import.meta.env.VITE_API_BASE)
 export const authClient = new AuthClient(base, {
   lock: (work) => typeof navigator !== 'undefined' && navigator.locks ? navigator.locks.request(`novel-processor-auth:${base}`, work) : work(),
 })

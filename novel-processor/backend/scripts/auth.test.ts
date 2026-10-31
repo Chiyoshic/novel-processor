@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import Database from 'better-sqlite3'
 import { AuthService, AuthError, type AuthOptions } from '../server/auth'
 import { applyCors } from '../server/cors'
-import { AuthClient, AuthRequestError, safeReturnPath } from '../../frontend/src/lib/auth-client'
+import { AuthClient, AuthRequestError, safeReturnPath, normalizeApiBase } from '../../frontend/src/lib/auth-client'
 import type { AuthTokens } from '../../shared/auth'
 
 const origin = 'https://novels.chiyoshi.cn'
@@ -166,4 +166,12 @@ test('修改密码 HTTP 接口清除 RT Cookie，前端状态退出，私有 API
     assert.equal((await post('login', { username, password: 'replacement-password-123' })).status, 200)
     assert.equal((await fetch(`${base}/api/library/site/book/translation/initialize`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401)
   })
+})
+
+
+test('所有请求直连 .env 后端地址，不回退前端域名或使用 Vite 代理', () => {
+  assert.equal(normalizeApiBase('https://novels.server.chiyoshi.cn'), 'https://novels.server.chiyoshi.cn/api')
+  assert.equal(normalizeApiBase('https://novels.server.chiyoshi.cn/api/'), 'https://novels.server.chiyoshi.cn/api')
+  assert.equal(normalizeApiBase('http://localhost:64226/api'), 'http://localhost:64226/api')
+  for (const input of ['', undefined, '/api', 'novels.server.chiyoshi.cn', 'javascript:alert(1)', 'https://user:password@example.invalid/api', 'https://example.invalid/api?token=secret']) assert.throws(() => normalizeApiBase(input))
 })

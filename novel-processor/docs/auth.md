@@ -36,7 +36,7 @@ CORS_ORIGINS=https://novels.chiyoshi.cn
 
 默认 `SameSite=Lax` 适用于同站点 HTTPS 子域名间的调用；若 API 部署到完全不同的主域名，建议通过同源 `/api` 反向代理，避免第三方 Cookie 限制。确实跨站时可设置 `AUTH_COOKIE_SAMESITE=none` 与 `AUTH_COOKIE_SECURE=true`，但仍受浏览器第三方 Cookie 策略限制。HTTPS 站点的 API 也应使用 HTTPS。
 
-`AUTH_COOKIE_SECURE=auto` 会对 HTTPS 浏览器来源或直接 TLS 连接设置 Secure Cookie，同时允许本地 HTTP 开发；仅在 HTTPS 使用的生产部署可固定为 true。Cookie 为 Host-only，路径限制为 `/api/auth`。Vite 开发代理保留原始 Host，本地同源开发无需放宽公网 CORS 白名单。
+`AUTH_COOKIE_SECURE=auto` 会对 HTTPS 浏览器来源或直接 TLS 连接设置 Secure Cookie，同时允许本地 HTTP 开发；仅在 HTTPS 使用的生产部署可固定为 true。Cookie 为 Host-only，路径限制为 `/api/auth`。前端已取消 Vite 代理，统一使用 `frontend/.env` 的 `VITE_API_BASE` 直连后端，例如 `https://novels.server.chiyoshi.cn/api`。此变量在构建时写入产物，修改后需要重新构建并部署前端；不会回退到当前前端域名。开发环境若从 localhost 跨域直连，也需要把对应 localhost Origin 显式加入后端 CORS_ORIGINS 白名单。
 
 修改环境变量后使用 `docker compose up -d --build` 重建/更新。不要在有翻译任务正在执行时重启。
 
