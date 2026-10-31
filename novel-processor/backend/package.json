@@ -10,7 +10,7 @@
     "fetch": "tsx scripts/fetch-novel.ts",
     "api-demo": "tsx scripts/api-demo.ts",
     "test:ai": "node --import tsx --test scripts/ai-reliability.test.ts",
-    "test:translation": "node --import tsx --test scripts/translation-persistence.test.ts scripts/translation-stream.test.ts"
+    "test:translation": "node --import tsx --test scripts/translation-persistence.test.ts scripts/translation-stream.test.ts scripts/episode-translation.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

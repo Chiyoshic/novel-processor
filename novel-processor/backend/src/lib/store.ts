@@ -34,7 +34,7 @@ export interface EpisodeStore {
   /** 读取某一话，不存在返回 null */
   read(ref: NovelRef, index: number): Promise<EpisodeContent | null>
   /** 写入某一话（覆盖） */
-  write(ref: NovelRef, content: EpisodeContent): Promise<void>
+  write(ref: NovelRef, content: EpisodeContent, options?: { preserveTranslation?: boolean }): Promise<void>
   /** 列出已存在的所有话序号 */
   list(ref: NovelRef): Promise<number[]>
   /** 删除某一话（可选能力） */
@@ -75,8 +75,10 @@ export class MemoryEpisodeStore implements EpisodeStore {
     return this.bucket(ref).get(index) ?? null
   }
 
-  async write(ref: NovelRef, content: EpisodeContent): Promise<void> {
-    this.bucket(ref).set(content.index, content)
+  async write(ref: NovelRef, content: EpisodeContent, options?: { preserveTranslation?: boolean }): Promise<void> {
+    const previous = this.bucket(ref).get(content.index)
+    const next = options?.preserveTranslation !== false && !content.translation && previous?.translation ? { ...content, translation: previous.translation } : content
+    this.bucket(ref).set(content.index, next)
   }
 
   async list(ref: NovelRef): Promise<number[]> {

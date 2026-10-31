@@ -2,6 +2,7 @@
 import type { EpisodeContent, NovelRecord, SiteInfo } from '@/lib'
 import { readTranslationStream } from '@/lib/translationStream'
 import type { TranslationTaskEvent, TranslationInitialization, TranslationOptions } from '@shared/translation'
+import type { EpisodeTranslationsResponse, TranslateEpisodesOptions } from '@shared/episode-translation'
 import type { ReasoningDialect, ReasoningLevel, ResponseProfile } from '@shared/ai'
 
 export interface LibraryEntry {
@@ -168,6 +169,10 @@ export const api = {
     })
     return readTranslationStream(response, onEvent)
   },
+
+  episodeTranslations: (site: string, novelId: string) => request<EpisodeTranslationsResponse>(`/library/${site}/${novelId}/translation/episodes`),
+  translateEpisodes: (site: string, novelId: string, options: TranslateEpisodesOptions) => request<EpisodeTranslationsResponse>(`/library/${site}/${novelId}/translation/episodes`, { method: 'POST', body: JSON.stringify(options) }),
+  stopEpisodeTranslation: (site: string, novelId: string) => request<EpisodeTranslationsResponse>(`/library/${site}/${novelId}/translation/episodes/stop`, { method: 'POST' }),
 
   stats: () => request<LibraryStats>('/stats'),
 

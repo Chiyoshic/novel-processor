@@ -9,6 +9,9 @@ import { LibraryDb } from './db'
 import type { NovelQuery, NovelSort, ProgressFilter, UpsertAiModelInput } from './db'
 import { initializeTranslation, parseTranslationOptions, selectInitializationEpisodes } from '../src/translation'
 import { createAiModelClient, normalizeBaseUrl, OPENCODE_BASE_URL, DEFAULT_AI_RETRY_POLICY } from '../src/ai'
+import { EpisodeTranslationService, TranslationBatchError } from './episodeTranslationService'
+import type { TranslateEpisodesOptions } from '../../shared/episode-translation'
+import { hashEpisodeSource } from '../src/translation-source'
 import { AiGenerationError } from '../src/ai-errors'
 import type { TranslationTaskEvent } from '../../shared/translation'
 import { validateReasoning, type ReasoningDialect, type ReasoningLevel, type ResponseProfile } from '../../shared/ai'
@@ -150,6 +153,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
   }
   const jobs = new Map<string, DownloadJob>()
   const initializationJobs = new Set<string>()
+  const episodeTranslations = new EpisodeTranslationService(db, store, initializationJobs)
 
   const readCatalog = (site: string, novelId: string) => readCatalogFile(novelsDir, site, novelId)
 
@@ -217,6 +221,22 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           sendJson(res, modelFailureStatus(err), { error: err instanceof Error ? err.message : '模型调用失败' })
         } finally { cancellation.dispose() }
         return
+      }
+
+      if (segments[0] === 'library' && segments[3] === 'translation' && segments[4] === 'episodes' && (segments.length === 5 || segments.length === 6 && segments[5] === 'stop')) {
+        const site = segments[1]!
+        const novelId = segments[2]!
+        try {
+          if (method === 'GET' && segments.length === 5) { sendJson(res, 200, episodeTranslations.snapshot(site, novelId)); return }
+          if (method === 'POST' && segments[5] === 'stop') { episodeTranslations.stop(site, novelId); sendJson(res, 200, episodeTranslations.snapshot(site, novelId)); return }
+          if (method === 'POST' && segments.length === 5) {
+            const record = await readCatalog(site, novelId)
+            if (!record) { sendJson(res, 404, { error: '作品不存在' }); return }
+            const options = await readBody(req) as unknown as TranslateEpisodesOptions
+            episodeTranslations.start(record, options)
+            sendJson(res, 202, episodeTranslations.snapshot(site, novelId)); return
+          }
+        } catch (error) { sendJson(res, error instanceof TranslationBatchError ? error.status : 400, { error: error instanceof Error ? error.message : '章节翻译任务失败' }); return }
       }
 
       if (segments.length === 5 && segments[0] === 'library' && segments[3] === 'translation' && segments[4] === 'initialize') {
@@ -335,6 +355,8 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
 
       // POST /api/trash/empty —— 清空回收站（永久删除所有回收站作品及其文件）
       if (segments.length === 2 && segments[0] === 'trash' && segments[1] === 'empty' && method === 'POST') {
+        const trashed = db.listNovels({ trashed: true, limit: 100000 }).items
+        if (trashed.some((item) => initializationJobs.has(JSON.stringify([item.site, item.novelId])))) { sendJson(res, 409, { error: '回收站中有正在翻译的作品，请先停止任务' }); return }
         const removed = db.purgeAllTrashed()
         for (const item of removed) {
           await rm(join(novelsDir, item.site, `${item.novelId}.json`), { force: true })
@@ -406,6 +428,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
         // DELETE /api/library/:site/:id?permanent=1 → 二级删除：连文件一起永久删除
         if (segments.length === 3 && method === 'DELETE') {
           const permanent = url.searchParams.get('permanent') === '1'
+          if (initializationJobs.has(JSON.stringify([site, novelId]))) { sendJson(res, 409, { error: '本书正在翻译，请先停止任务后再删除' }); return }
 
           if (!permanent) {
             if (!db.trashNovel(site, novelId)) {
@@ -482,12 +505,13 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             sendJson(res, 404, { error: '该话尚未下载' })
             return
           }
-          sendJson(res, 200, content)
+          sendJson(res, 200, content.translation ? { ...content, translation: { ...content.translation, stale: content.translation.sourceHash !== hashEpisodeSource(content) } } : content)
           return
         }
 
         // POST /api/library/:site/:id/fetch  { range?, all?, overwrite?, concurrency? }
         if (segments[3] === 'fetch' && method === 'POST') {
+          if (initializationJobs.has(JSON.stringify([site, novelId]))) { sendJson(res, 409, { error: '本书正在翻译，请先停止任务后再更新正文' }); return }
           const body = await readBody(req)
           const record = await readCatalog(site, novelId)
           if (!record) {
@@ -545,6 +569,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
               if (job) job.done += 1
               const rowId = db.findId(site, novelId)
               if (rowId !== null) db.markContent(site, novelId, [content.index])
+              db.invalidateEpisodeTranslation(site, novelId, content.index, hashEpisodeSource(content))
             },
           })
 

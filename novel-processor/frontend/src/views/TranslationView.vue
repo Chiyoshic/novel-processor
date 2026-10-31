@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
 import type { NovelRecord } from '@/lib'
 import TranslationWorkspace from '@/components/TranslationWorkspace.vue'
+import EpisodeTranslationWorkspace from '@/components/EpisodeTranslationWorkspace.vue'
 
 const props = defineProps<{ site: string; novelId: string }>()
+const route = useRoute()
+const router = useRouter()
+const step = computed(() => route.query.step === 'episodes' ? 'episodes' : 'initialization')
+const initialization = ref<InstanceType<typeof TranslationWorkspace>>()
+function selectStep(value: string): void { void router.replace({ query: { ...route.query, step: value } }) }
 const catalog = ref<NovelRecord | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -50,10 +57,11 @@ watch(() => [props.site, props.novelId], () => void load(), { immediate: true })
       <aside class="workflow" aria-label="翻译流程">
         <p class="eyebrow">翻译流程</p>
         <ol>
-          <li aria-current="step"><span class="step-index">01</span><span>初始化翻译材料</span></li>
+          <li><button type="button" :aria-current="step === 'initialization' ? 'step' : undefined" @click="selectStep('initialization')"><span class="step-index">01</span><span>初始化翻译材料</span></button></li>
+          <li><button type="button" :aria-current="step === 'episodes' ? 'step' : undefined" @click="selectStep('episodes')"><span class="step-index">02</span><span>章节翻译</span></button></li>
         </ol>
       </aside>
-      <TranslationWorkspace :key="JSON.stringify([site, novelId])" :catalog="catalog" />
+      <div class="step-content"><TranslationWorkspace v-show="step === 'initialization'" ref="initialization" :key="JSON.stringify([site, novelId])" :catalog="catalog" /><EpisodeTranslationWorkspace v-if="step === 'episodes'" :key="JSON.stringify([site, novelId, 'episodes'])" :catalog="catalog" @baseline-updated="initialization?.reload()" /></div>
     </div>
   </main>
 </template>
@@ -68,7 +76,8 @@ h1 { font-size: 30px; margin-top: 8px; }
 .translation-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
 .workflow { background: var(--surface-muted); border-radius: var(--radius-lg); padding: 20px 16px; }
 .workflow ol { list-style: none; margin: 16px 0; padding: 0; }
-.workflow li { display: flex; align-items: center; gap: 10px; background: var(--blue-soft); color: var(--blue-dark); padding: 12px; border-radius: 16px; font-size: 12px; font-weight: 600; }
+.step-content { min-width: 0; }.workflow li + li { margin-top: 8px; }.workflow li button { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 10px; background: var(--blue-soft); color: var(--blue-dark); padding: 12px; border-radius: 16px; font-size: 12px; font-weight: 600; }
+.workflow li button:not([aria-current]) { background: transparent; color: var(--muted); }.workflow li button:hover { background: var(--blue-soft); }
 .step-index { font-size: 11px; }
 .page-state { display: grid; justify-items: center; gap: 20px; padding: 60px 16px; color: var(--muted); font-size: 14px; }
 @media (max-width: 900px) { .translation-layout { grid-template-columns: 1fr; }.workflow { padding: 16px; }.workflow ol { margin: 12px 0 0; } }

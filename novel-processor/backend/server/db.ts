@@ -22,10 +22,11 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
 import type { NovelRecord } from '../src/lib/types'
-import type { TranslationInitialization } from '../../shared/translation'
+import type { EpisodeTranslationStatus } from '../../shared/episode-translation'
+import type { TranslationBrief, TranslationInitialization } from '../../shared/translation'
 import type { ReasoningDialect, ReasoningLevel, ResponseProfile } from '../../shared/ai'
 
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 
 export interface DbNovelRow {
   site: string
@@ -100,6 +101,17 @@ interface RawNovelRow {
 }
 
 const SCHEMA = `
+
+CREATE TABLE IF NOT EXISTS episode_translations (
+  site TEXT NOT NULL,
+  novel_id TEXT NOT NULL,
+  episode_index INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  has_translation INTEGER NOT NULL DEFAULT 0,
+  detail_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (site, novel_id, episode_index)
+);
 
 CREATE TABLE IF NOT EXISTS translation_initializations (
   id            INTEGER PRIMARY KEY,
@@ -314,6 +326,9 @@ export class LibraryDb {
 
     const version = this.db.pragma('user_version', { simple: true }) as number
     if (version !== SCHEMA_VERSION) this.db.pragma(`user_version = ${SCHEMA_VERSION}`)
+    // A process restart cannot resume a paid provider request. Preserve old successful translations.
+    const interrupted = this.db.prepare("SELECT detail_json FROM episode_translations WHERE status IN ('queued','translating')").all() as Array<{ detail_json: string }>
+    for (const row of interrupted) this.saveEpisodeTranslation({ ...JSON.parse(row.detail_json), status: 'cancelled', error: '后端已重启，任务中断；可重新选择继续翻译。', updatedAt: new Date().toISOString() })
   }
 
   /**
@@ -525,6 +540,8 @@ export class LibraryDb {
 
   /** 二级删除：永久移除索引（磁盘文件由调用方负责清理）。 */
   purgeNovel(site: string, novelId: string): boolean {
+    this.db.prepare('DELETE FROM episode_translations WHERE site = ? AND novel_id = ?').run(site, novelId)
+    this.db.prepare('DELETE FROM translation_initializations WHERE site = ? AND novel_id = ?').run(site, novelId)
     const result = this.db.prepare('DELETE FROM novels WHERE site = ? AND novel_id = ?').run(site, novelId)
     return result.changes > 0
   }
@@ -534,7 +551,7 @@ export class LibraryDb {
     const rows = this.db
       .prepare('SELECT site, novel_id FROM novels WHERE deleted_at IS NOT NULL')
       .all() as Array<{ site: string; novel_id: string }>
-    this.db.prepare('DELETE FROM novels WHERE deleted_at IS NOT NULL').run()
+    this.db.transaction(() => { for (const row of rows) this.purgeNovel(row.site, row.novel_id) })()
     return rows.map((row) => ({ site: row.site, novelId: row.novel_id }))
   }
 
@@ -732,6 +749,34 @@ export class LibraryDb {
       c: number
     }
     return { novels: novels.c, episodes: episodes.c, withContent: withContent.c, trashed: trashed.c }
+  }
+
+  listEpisodeTranslations(site: string, novelId: string): EpisodeTranslationStatus[] {
+    const rows = this.db.prepare('SELECT detail_json FROM episode_translations WHERE site = ? AND novel_id = ? ORDER BY episode_index').all(site, novelId) as Array<{ detail_json: string }>
+    return rows.map((row) => JSON.parse(row.detail_json) as EpisodeTranslationStatus)
+  }
+
+  saveEpisodeTranslation(value: EpisodeTranslationStatus): void {
+    this.db.prepare(`INSERT INTO episode_translations (site, novel_id, episode_index, status, has_translation, detail_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(site, novel_id, episode_index) DO UPDATE SET status=excluded.status, has_translation=excluded.has_translation, detail_json=excluded.detail_json, updated_at=excluded.updated_at`)
+      .run(value.site, value.novelId, value.index, value.status, Number(value.hasTranslation), JSON.stringify(value), value.updatedAt)
+  }
+
+  /** Translation flag and baseline mutations commit together, after the episode JSON is safely written. */
+  commitEpisodeTranslation(value: EpisodeTranslationStatus, baseline: TranslationInitialization, result: TranslationBrief): void {
+    this.db.transaction(() => {
+      const current = this.getTranslationInitialization(value.site, value.novelId)
+      if (!current || current.id !== baseline.id || JSON.stringify(current.result) !== JSON.stringify(baseline.result)) throw new Error('翻译材料已变化，未覆盖新材料，请重试本话')
+      if (JSON.stringify(result) !== JSON.stringify(baseline.result)) {
+        this.db.prepare('UPDATE translation_initializations SET result_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(result), new Date().toISOString(), baseline.id)
+      }
+      this.saveEpisodeTranslation(value)
+    })()
+  }
+
+  invalidateEpisodeTranslation(site: string, novelId: string, index: number, sourceHash: string): void {
+    const current = this.listEpisodeTranslations(site, novelId).find((item) => item.index === index)
+    if (current?.hasTranslation && current.sourceHash !== sourceHash) this.saveEpisodeTranslation({ ...current, status: 'stale', updatedAt: new Date().toISOString() })
   }
 
   getTranslationInitialization(site: string, novelId: string): TranslationInitialization | null {

@@ -10,7 +10,8 @@
  * 之所以不放进 src/lib：它依赖 node:fs，前端打包不应包含。
  * 浏览器侧请用 `MemoryEpisodeStore`，或由后端提供 HTTP 接口。
  */
-import { access, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, unlink, writeFile, rename } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { EpisodeContent, NovelRef } from '../lib/types'
 import type { EpisodeManifest, EpisodeStore } from '../lib/store'
@@ -50,10 +51,14 @@ export class FsEpisodeStore implements EpisodeStore {
     }
   }
 
-  async write(ref: NovelRef, content: EpisodeContent): Promise<void> {
+  async write(ref: NovelRef, content: EpisodeContent, options?: { preserveTranslation?: boolean }): Promise<void> {
     const path = this.fileOf(ref, content.index)
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, `${JSON.stringify(content, null, 2)}\n`, 'utf8')
+    const previous = options?.preserveTranslation !== false && !content.translation ? await this.read(ref, content.index) : null
+    const next = previous?.translation ? { ...content, translation: previous.translation } : content
+    const temp = `${path}.${randomUUID()}.tmp`
+    try { await writeFile(temp, `${JSON.stringify(next, null, 2)}\n`, 'utf8'); await rename(temp, path) }
+    finally { await unlink(temp).catch(() => {}) }
   }
 
   async list(ref: NovelRef): Promise<number[]> {

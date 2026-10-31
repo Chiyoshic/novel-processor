@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { taskStatusLabels, type TranslationTaskState } from '@/lib/translationTask'
-const props = defineProps<{ task: TranslationTaskState }>()
+const props = withDefaults(defineProps<{ task: TranslationTaskState; title?: string }>(), { title: '初始化任务' })
 defineEmits<{ cancel: [] }>()
 const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | undefined
@@ -41,7 +41,7 @@ onUnmounted(() => { if (scrollTimer) clearTimeout(scrollTimer) })
 
 <template>
   <section class="task-panel" :class="{ 'is-error': task.status === 'failed', 'is-active': active }" aria-labelledby="task-title">
-    <header class="task-head"><div><p class="task-eyebrow">初始化任务</p><h3 id="task-title"><span class="status-dot" :class="{ pulse: active }" aria-hidden="true" />{{ taskStatusLabels[task.status] }}<span v-if="task.status === 'retrying'" class="retry-countdown">{{ retryIn }} 秒</span></h3></div><button v-if="active" class="pill pill--ghost pill--small" type="button" @click="$emit('cancel')">停止任务</button></header>
+    <header class="task-head"><div><p class="task-eyebrow">{{ title }}</p><h3 id="task-title"><span class="status-dot" :class="{ pulse: active }" aria-hidden="true" />{{ taskStatusLabels[task.status] }}<span v-if="task.status === 'retrying'" class="retry-countdown">{{ retryIn }} 秒</span></h3></div><button v-if="active" class="pill pill--ghost pill--small" type="button" @click="$emit('cancel')">停止任务</button></header>
     <p class="model-line">{{ task.modelName }} <span>{{ task.model }}</span></p>
     <div class="task-metrics"><div><span>总耗时</span><strong>{{ duration(elapsed) }}</strong></div><div><span>调用次数</span><strong>{{ task.attempts.length }}<small> / {{ task.maxAttempts }}</small></strong></div><div><span>已重试</span><strong>{{ Math.max(0, task.attempts.length - 1) }}<small> 次</small></strong></div><div><span>已接收字符</span><strong>{{ received.toLocaleString() }}</strong></div></div>
     <dl class="task-info"><div><dt>任务开始</dt><dd>{{ time(task.startedAt) }}</dd></div><div><dt>最近活动</dt><dd>{{ time(task.lastEventAt) }}</dd></div><div><dt>请求协议</dt><dd>{{ task.apiType === 'responses' ? 'Responses' : 'Chat Completions' }}</dd></div><div><dt>材料 / 思考等级</dt><dd>{{ task.episodeCount }} 话 · {{ task.reasoningLevel }}</dd></div><div v-if="task.limits"><dt>总任务时限</dt><dd>{{ task.limits.totalTimeoutMs / 60000 }} 分钟</dd></div><div v-if="task.limits"><dt>流式空闲超时</dt><dd>{{ task.limits.idleTimeoutMs / 1000 }} 秒无上游事件</dd></div><div v-if="task.finishedAt"><dt>任务结束</dt><dd>{{ time(task.finishedAt) }}</dd></div></dl>

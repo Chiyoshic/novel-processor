@@ -5,6 +5,7 @@ import type { NovelRecord } from '@/lib'
 import { api, type DownloadJob } from '@/api'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import NovelDetail from '@/components/NovelDetail.vue'
+import type { EpisodeTranslationStatus } from '@shared/episode-translation'
 import { notify } from '@/stores/toast'
 
 const props = defineProps<{ site: string; novelId: string }>()
@@ -12,6 +13,8 @@ const router = useRouter()
 
 const catalog = ref<NovelRecord | null>(null)
 const downloaded = ref<Set<number>>(new Set())
+const translations = ref<EpisodeTranslationStatus[]>([])
+let translationPoll: ReturnType<typeof setInterval> | undefined
 const busy = ref<string | null>(null)
 const concurrency = ref(4)
 const loading = ref(true)
@@ -30,11 +33,13 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const [record, progress] = await Promise.all([
+    const [record, progress, translated] = await Promise.all([
       api.catalog(props.site, props.novelId),
       api.progress(props.site, props.novelId),
+      api.episodeTranslations(props.site, props.novelId),
     ])
     catalog.value = record
+    translations.value = translated.episodes
     downloaded.value = new Set(progress.indices)
     job.value = progress.job
   } catch (err) {
@@ -119,9 +124,15 @@ async function confirmTrash(): Promise<void> {
   }
 }
 
-onMounted(() => void load())
+onMounted(() => {
+  void load()
+  translationPoll = setInterval(() => {
+    void api.episodeTranslations(props.site, props.novelId).then((value) => { translations.value = value.episodes }).catch(() => {})
+  }, 3000)
+})
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (translationPoll) clearInterval(translationPoll)
 })
 </script>
 
@@ -164,6 +175,7 @@ onUnmounted(() => {
       v-model:concurrency="concurrency"
       :catalog="catalog"
       :downloaded="downloaded"
+      :translations="translations"
       :busy="busy"
       :job="job"
       @open="openEpisode"

@@ -88,6 +88,7 @@ function exportJson(): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+defineExpose({ reload: load })
 onMounted(() => void load())
 onUnmounted(() => generation?.abort())
 </script>

@@ -2,11 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import type { Episode, NovelRecord } from '@/lib'
 import type { DownloadJob } from '@/api'
+import { episodeTranslationLabels, type EpisodeTranslationStatus } from '@shared/episode-translation'
 import { detectLang } from '@/utils/lang'
 
 const props = defineProps<{
   catalog: NovelRecord
   downloaded: Set<number>
+  translations?: EpisodeTranslationStatus[]
   busy: string | null
   job: DownloadJob | null
 }>()
@@ -16,6 +18,9 @@ const emit = defineEmits<{
   download: [payload: { range?: string; all?: boolean; overwrite?: boolean }]
 }>()
 
+const translationStates = computed(() => new Map((props.translations ?? []).map((item) => [item.index, item])))
+const translatedCount = computed(() => (props.translations ?? []).filter((item) => item.hasTranslation && item.status !== 'stale').length)
+function translationLabel(index: number): string { const state = translationStates.value.get(index); return state ? episodeTranslationLabels[state.status] : '未翻译' }
 const rangeInput = ref('')
 const concurrency = defineModel<number>('concurrency', { default: 4 })
 const collapsed = ref<Set<string>>(new Set())
@@ -98,6 +103,7 @@ const stats = computed(() => [
   { label: 'Chapters', value: formatNumber(props.catalog.meta.chapterCount ?? groups.value.length) },
   { label: 'Words', value: props.catalog.meta.wordCount ? formatNumber(props.catalog.meta.wordCount) : '—' },
   { label: 'Downloaded', value: `${have.value}` },
+  { label: 'Translated', value: `${translatedCount.value}` },
 ])
 
 function formatNumber(n: number): string {
@@ -269,7 +275,7 @@ watch(
               @click="emit('open', episode.index)"
             >
               <span class="ep-index">{{ String(episode.index).padStart(3, '0') }}</span>
-              <span class="ep-title serif" :lang="lang">{{ episode.title }}</span>
+              <span class="ep-title serif" :lang="lang">{{ episode.title }}<span class="translation-state" :class="{ translated: translationStates.get(episode.index)?.hasTranslation }" :title="translationStates.get(episode.index)?.error ?? undefined">{{ translationLabel(episode.index) }}</span></span>
               <span class="ep-date">{{ formatDate(episode.publishedAt) }}</span>
               <span class="ep-state" :class="{ on: downloaded.has(episode.index) }">
                 {{ downloaded.has(episode.index) ? '已存' : '未存' }}
@@ -380,7 +386,7 @@ watch(
 
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-top: 24px;
   padding: 18px 0;
 }
@@ -676,6 +682,7 @@ watch(
   text-align: right;
 }
 
+.translation-state { display: inline-block; vertical-align: middle; font: 10px/1.7 var(--sans); border-radius: 999px; padding: 2px 8px; background: var(--paper); color: var(--muted); margin-left: 8px; white-space: nowrap; }.translation-state.translated { color: var(--blue-dark); background: var(--blue-soft); }
 .ep-state {
   font-family: var(--mono);
   font-size: 9px;

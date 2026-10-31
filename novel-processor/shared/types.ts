@@ -112,6 +112,8 @@ export interface Episode {
 
 /** 正文内容（单话）。 */
 export interface EpisodeContent {
+  /** Optional Chinese translation; original fields are never replaced. */
+  translation?: import('./episode-translation').StoredEpisodeTranslation
   index: number
   title: string
   /** 前言（まえがき），无则为空串 */
