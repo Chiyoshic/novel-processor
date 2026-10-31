@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      DATA_DIR: /app/data
+      DB_PATH: /app/data/library.db
+      NOVELS_DIR: /app/data/novels
+      EPISODES_DIR: /app/data/episodes
+      AUDIT_LOG_PATH: /app/data/audit.log
+    volumes:
+      - ../data:/app/data
+    ports:
+      - "${API_PORT:-64226}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s

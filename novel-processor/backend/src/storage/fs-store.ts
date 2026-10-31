@@ -12,8 +12,8 @@
  */
 import { access, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { EpisodeContent, NovelRef } from '../src/lib/types'
-import type { EpisodeManifest, EpisodeStore } from '../src/lib/store'
+import type { EpisodeContent, NovelRef } from '../lib/types'
+import type { EpisodeManifest, EpisodeStore } from '../lib/store'
 
 const MANIFEST_FILE = '_manifest.json'
 

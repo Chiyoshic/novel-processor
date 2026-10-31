@@ -128,7 +128,7 @@ function submit(): void {
 @media (max-width: 580px) {
   .input-shell {
     flex-wrap: wrap;
-    border-radius: 20px;
+    border-radius: 999px;
     padding: 10px;
   }
   .input-shell input {

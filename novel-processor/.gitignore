@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 data/
+# Local environment files
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env

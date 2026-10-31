@@ -16,17 +16,16 @@
  * 这样 Vite 的配置文件加载器不会去解析这些源码模块
  * （否则会触发 "config uses features unsupported by configLoader: native" 警告）。
  */
-import { appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Plugin } from 'vite'
 import type { NovelLibrary } from '../src/lib/library'
 import type { EpisodeStore } from '../src/lib/store'
 import type { NovelRef, NovelRecord } from '../src/lib/types'
 import { LibraryDb } from './db'
 import type { NovelQuery, NovelSort, ProgressFilter } from './db'
 
-interface Deps {
+export interface LibraryApiDeps {
   library: NovelLibrary
   store: EpisodeStore
   db: LibraryDb
@@ -83,7 +82,7 @@ async function readCatalogFile(novelsDir: string, site: string, novelId: string)
   }
 }
 
-function createHandler(deps: Deps) {
+export function createLibraryApiHandler(deps: LibraryApiDeps) {
   const { library, store, db, dataDir, novelsDir, episodesDir, parseRange, detectSite, syncFromDisk } = deps
 
   /**
@@ -396,92 +395,3 @@ function createHandler(deps: Deps) {
   }
 }
 
-export function libraryApiPlugin(projectRoot: string): Plugin {
-  const dataDir = resolve(projectRoot, 'data')
-  const novelsDir = join(dataDir, 'novels')
-  const episodesDir = join(dataDir, 'episodes')
-  const dbFile = join(dataDir, 'library.db')
-
-  return {
-    name: 'novel-library-api',
-    async configureServer(server) {
-      const [{ createNovelLibrary }, { parseEpisodeRange }, { FsEpisodeStore }, { resolveTarget }] =
-        await Promise.all([
-          import('../src/lib/library'),
-          import('../src/lib/range'),
-          import('../scripts/fs-store'),
-          import('../src/lib/sites/registry'),
-        ])
-
-      const store = new FsEpisodeStore(episodesDir)
-      const library = createNovelLibrary({ store, concurrency: 4 })
-      const db = new LibraryDb(dbFile)
-
-      const detectSite = (input: string): string | null => {
-        try {
-          return resolveTarget(input).adapter.id
-        } catch {
-          return null
-        }
-      }
-
-      const syncFromDisk = async (): Promise<{ novels: number; episodes: number }> => {
-        let novels = 0
-        let episodes = 0
-        let sites: string[] = []
-        try {
-          sites = await readdir(novelsDir)
-        } catch {
-          return { novels, episodes }
-        }
-
-        for (const site of sites) {
-          let files: string[] = []
-          try {
-            files = await readdir(join(novelsDir, site))
-          } catch {
-            continue
-          }
-          for (const file of files) {
-            if (!file.endsWith('.json')) continue
-            const record = await readCatalogFile(novelsDir, site, file.slice(0, -5))
-            if (!record) continue
-            const ref: NovelRef = {
-              site,
-              novelId: record.source.novelId,
-              canonicalUrl: record.source.url,
-              variant: null,
-            }
-            const rowId = db.upsertCatalog(record)
-            const indices = await store.list(ref)
-            db.setContentFlags(rowId, indices)
-            novels += 1
-            episodes += indices.length
-          }
-        }
-        return { novels, episodes }
-      }
-
-      // 启动即对齐索引与磁盘（幂等，几毫秒级）
-      await syncFromDisk()
-
-      const handler = createHandler({
-        library,
-        store,
-        db,
-        dataDir,
-        novelsDir,
-        episodesDir,
-        parseRange: parseEpisodeRange,
-        detectSite,
-        syncFromDisk,
-      })
-
-      server.middlewares.use('/api', (req, res, next) => {
-        void handler(req, res, next)
-      })
-
-      server.httpServer?.on('close', () => db.close())
-    },
-  }
-}

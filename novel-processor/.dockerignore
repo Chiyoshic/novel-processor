@@ -1,0 +1,13 @@
+.git
+.gitignore
+.workbuddy-ai
+node_modules
+**/node_modules
+**/.env
+**/.env.*
+!backend/.env.example
+!frontend/.env.example
+data
+**/dist
+*.log
+.DS_Store

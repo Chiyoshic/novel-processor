@@ -258,3 +258,11 @@ export interface FetchProgress {
   totalPages: number
   message: string
 }
+
+/** Site capability metadata exposed by the backend API. */
+export interface SiteInfo {
+  id: SiteId
+  name: string
+  hosts: readonly string[]
+  capabilities: AdapterCapabilities
+}

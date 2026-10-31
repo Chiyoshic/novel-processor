@@ -1,0 +1,23 @@
+{
+  "name": "novel-processor-backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "fetch": "tsx scripts/fetch-novel.ts",
+    "api-demo": "tsx scripts/api-demo.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.13.3",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2"
+  }
+}

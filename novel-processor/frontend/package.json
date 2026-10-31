@@ -1,5 +1,5 @@
 {
-  "name": "novel-processor",
+  "name": "novel-processor-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,21 +7,16 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "fetch": "tsx scripts/fetch-novel.ts",
     "typecheck": "vue-tsc -b"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
-    "cheerio": "^1.2.0",
     "vue": "^3.5.42",
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
-    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vue-tsc": "^3.3.11"

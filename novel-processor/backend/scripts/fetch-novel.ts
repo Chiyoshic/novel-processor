@@ -13,7 +13,7 @@ import { createNovelLibrary, resolveTarget } from '../src/lib/index'
 import { describeError, isNovelError } from '../src/lib/errors'
 import { formatEpisodeRange, parseEpisodeRange } from '../src/lib/range'
 import type { NovelRecord } from '../src/lib/types'
-import { FsEpisodeStore } from './fs-store'
+import { FsEpisodeStore } from '../src/storage/fs-store'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
