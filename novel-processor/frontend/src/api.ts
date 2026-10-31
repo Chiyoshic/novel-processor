@@ -1,5 +1,8 @@
 /** 本地数据 API 的类型化客户端。所有网络访问都从这里走。 */
 import type { EpisodeContent, NovelRecord, SiteInfo } from '@/lib'
+import { readTranslationStream } from '@/lib/translationStream'
+import type { TranslationTaskEvent, TranslationInitialization, TranslationOptions } from '@shared/translation'
+import type { ReasoningDialect, ReasoningLevel, ResponseProfile } from '@shared/ai'
 
 export interface LibraryEntry {
   site: string
@@ -19,6 +22,30 @@ export interface LibraryEntry {
   /** 非空表示在回收站中 */
   deletedAt: string | null
   tags: string[]
+}
+
+
+export type AiApiType = 'responses' | 'chat-completions'
+
+export interface AiModelConfig {
+  id: number
+  name: string
+  provider: string
+  apiType: AiApiType
+  reasoningDialect: ReasoningDialect
+  reasoningLevel: ReasoningLevel
+  responseProfile: ResponseProfile
+  extraBody: Record<string, unknown>
+  baseUrl: string
+  apiKey: string
+  model: string
+  windowTokens: number
+  inputTokens: number
+  outputTokens: number
+  headers: Record<string, string>
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface LibraryStats {
@@ -111,6 +138,36 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   sites: () => request<SiteInfo[]>('/sites'),
+
+  aiModels: () => request<AiModelConfig[]>('/settings/models'),
+
+  saveAiModel: (model: Partial<AiModelConfig>) =>
+    request<AiModelConfig>(model.id ? `/settings/models/${model.id}` : '/settings/models', {
+      method: model.id ? 'PUT' : 'POST', body: JSON.stringify(model),
+    }),
+
+  deleteAiModel: (id: number) => request<{ ok: boolean }>(`/settings/models/${id}`, { method: 'DELETE' }),
+
+  testAiModel: (id: number, prompt?: string) =>
+    request<{ text: string; model: string; apiType: AiApiType }>(`/settings/models/${id}/test`, {
+      method: 'POST', body: JSON.stringify({ prompt }),
+    }),
+
+  translationInitialization: (site: string, novelId: string) =>
+    request<TranslationInitialization | null>(`/library/${site}/${novelId}/translation/initialize`),
+
+  initializeTranslation: (site: string, novelId: string, options: TranslationOptions, signal?: AbortSignal) =>
+    request<TranslationInitialization>(`/library/${site}/${novelId}/translation/initialize`, {
+      method: 'POST', body: JSON.stringify(options), signal,
+    }),
+
+  streamTranslation: async (site: string, novelId: string, options: TranslationOptions, onEvent: (event: TranslationTaskEvent) => void, signal?: AbortSignal) => {
+    const response = await fetch(`${apiBase}/library/${site}/${novelId}/translation/initialize`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
+      body: JSON.stringify(options), signal,
+    })
+    return readTranslationStream(response, onEvent)
+  },
 
   stats: () => request<LibraryStats>('/stats'),
 

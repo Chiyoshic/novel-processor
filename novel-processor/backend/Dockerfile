@@ -5,7 +5,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund --loglevel=info
 
 COPY shared ./shared
 COPY backend ./backend

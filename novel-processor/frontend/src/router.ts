@@ -24,6 +24,19 @@ export const router = createRouter({
       meta: { title: '阅读' },
     },
     {
+      path: '/novel/:site/:novelId/translation',
+      name: 'translation',
+      component: () => import('@/views/TranslationView.vue'),
+      props: true,
+      meta: { title: 'AI 翻译' },
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
+      meta: { title: '设置' },
+    },
+    {
       path: '/trash',
       name: 'trash',
       component: () => import('@/views/TrashView.vue'),

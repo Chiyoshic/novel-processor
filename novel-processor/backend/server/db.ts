@@ -1,12 +1,12 @@
 /**
- * SQLite 索引层（辅助存储）。
+ * SQLite 索引与用户配置持久层。
  *
  * 定位：**SQLite 不是正文存储，而是索引**。
  * - 正文与目录仍是磁盘 JSON（`data/novels` / `data/episodes`）：可读、可备份；
- * - SQLite 只存可查询的骨架：作品、章、话、是否有正文、标签。
+ * - SQLite 存储可查询的作品骨架，以及模型配置、翻译初始化材料等用户数据。
  *
- * 由此得到一个重要性质：**DB 是磁盘的投影，可随时整库重建**。
- * 所以 schema 升级不需要写迁移脚本——版本不符就 drop 重建，再 `syncFromDisk()`。
+ * 作品索引可从磁盘同步，但用户配置与翻译材料只保存在 SQLite，不能整库重建。
+ * Schema 升级采用非破坏性的建表、补列，保留现有数据。
  *
  * 设计要点（v2）：
  * 1. `novels.id` 用整型代理主键 + `UNIQUE(site, novel_id)`：
@@ -22,8 +22,10 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
 import type { NovelRecord } from '../src/lib/types'
+import type { TranslationInitialization } from '../../shared/translation'
+import type { ReasoningDialect, ReasoningLevel, ResponseProfile } from '../../shared/ai'
 
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 5
 
 export interface DbNovelRow {
   site: string
@@ -98,6 +100,40 @@ interface RawNovelRow {
 }
 
 const SCHEMA = `
+
+CREATE TABLE IF NOT EXISTS translation_initializations (
+  id            INTEGER PRIMARY KEY,
+  site          TEXT NOT NULL,
+  novel_id      TEXT NOT NULL,
+  model_id      INTEGER NOT NULL,
+  request_json  TEXT NOT NULL,
+  result_json   TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  UNIQUE (site, novel_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_models (
+  id            INTEGER PRIMARY KEY,
+  name          TEXT NOT NULL,
+  provider      TEXT NOT NULL DEFAULT 'openai-compatible',
+  api_type      TEXT NOT NULL DEFAULT 'responses',
+  reasoning_dialect TEXT NOT NULL DEFAULT 'none',
+  reasoning_level   TEXT NOT NULL DEFAULT 'default',
+  response_profile TEXT NOT NULL DEFAULT 'auto',
+  extra_body_json TEXT NOT NULL DEFAULT '{}',
+  base_url      TEXT NOT NULL,
+  api_key       TEXT NOT NULL DEFAULT '',
+  model         TEXT NOT NULL,
+  window_tokens INTEGER NOT NULL DEFAULT 1050000,
+  input_tokens  INTEGER NOT NULL DEFAULT 922000,
+  output_tokens INTEGER NOT NULL DEFAULT 128000,
+  headers_json  TEXT NOT NULL DEFAULT '{}',
+  enabled       INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS novels (
   id                INTEGER PRIMARY KEY,
   site              TEXT NOT NULL,
@@ -197,6 +233,13 @@ CREATE INDEX IF NOT EXISTS idx_episodes_content ON episodes (novel_id) WHERE has
 /** 需要补齐的列（老库升级用，只加不删）。 */
 const REQUIRED_COLUMNS: Array<{ table: string; column: string; ddl: string }> = [
   { table: 'novels', column: 'deleted_at', ddl: 'ALTER TABLE novels ADD COLUMN deleted_at TEXT' },
+  { table: 'ai_models', column: 'reasoning_dialect', ddl: "ALTER TABLE ai_models ADD COLUMN reasoning_dialect TEXT NOT NULL DEFAULT 'none'" },
+  { table: 'ai_models', column: 'response_profile', ddl: "ALTER TABLE ai_models ADD COLUMN response_profile TEXT NOT NULL DEFAULT 'auto'" },
+  { table: 'ai_models', column: 'extra_body_json', ddl: "ALTER TABLE ai_models ADD COLUMN extra_body_json TEXT NOT NULL DEFAULT '{}'" },
+  { table: 'ai_models', column: 'reasoning_level', ddl: "ALTER TABLE ai_models ADD COLUMN reasoning_level TEXT NOT NULL DEFAULT 'default'" },
+  { table: 'ai_models', column: 'window_tokens', ddl: 'ALTER TABLE ai_models ADD COLUMN window_tokens INTEGER NOT NULL DEFAULT 1050000' },
+  { table: 'ai_models', column: 'input_tokens', ddl: 'ALTER TABLE ai_models ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 922000' },
+  { table: 'ai_models', column: 'output_tokens', ddl: 'ALTER TABLE ai_models ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 128000' },
 ]
 
 /** 状态码 → 中文标签（用于 facets 展示）。 */
@@ -206,6 +249,48 @@ const STATUS_LABEL: Record<string, string> = {
   hiatus: '休载',
   short: '短篇',
   unknown: '未知',
+}
+
+export type AiApiType = 'responses' | 'chat-completions'
+
+export interface AiModelConfig {
+  id: number
+  name: string
+  provider: string
+  apiType: AiApiType
+  reasoningDialect: ReasoningDialect
+  reasoningLevel: ReasoningLevel
+  responseProfile: ResponseProfile
+  extraBody: Record<string, unknown>
+  baseUrl: string
+  apiKey: string
+  model: string
+  windowTokens: number
+  inputTokens: number
+  outputTokens: number
+  headers: Record<string, string>
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpsertAiModelInput {
+  id?: number
+  name: string
+  provider?: string
+  apiType: AiApiType
+  reasoningDialect?: ReasoningDialect
+  reasoningLevel?: ReasoningLevel
+  responseProfile?: ResponseProfile
+  extraBody?: Record<string, unknown>
+  baseUrl: string
+  apiKey: string
+  model: string
+  windowTokens?: number
+  inputTokens?: number
+  outputTokens?: number
+  headers?: Record<string, string>
+  enabled?: boolean
 }
 
 export class LibraryDb {
@@ -647,6 +732,75 @@ export class LibraryDb {
       c: number
     }
     return { novels: novels.c, episodes: episodes.c, withContent: withContent.c, trashed: trashed.c }
+  }
+
+  getTranslationInitialization(site: string, novelId: string): TranslationInitialization | null {
+    const row = this.db.prepare('SELECT * FROM translation_initializations WHERE site = ? AND novel_id = ?').get(site, novelId) as Record<string, unknown> | undefined
+    if (!row) return null
+    const parse = (value: unknown): unknown => JSON.parse(String(value))
+    return { id: Number(row.id), site: String(row.site), novelId: String(row.novel_id), modelId: Number(row.model_id), request: parse(row.request_json) as TranslationInitialization['request'], result: parse(row.result_json) as TranslationInitialization['result'], createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
+  }
+
+  saveTranslationInitialization(input: Pick<TranslationInitialization, 'site' | 'novelId' | 'modelId' | 'request' | 'result'>): TranslationInitialization {
+    const now = new Date().toISOString()
+    this.db.prepare(`INSERT INTO translation_initializations (site, novel_id, model_id, request_json, result_json, created_at, updated_at)
+      VALUES (@site, @novel_id, @model_id, @request_json, @result_json, @created_at, @updated_at)
+      ON CONFLICT(site, novel_id) DO UPDATE SET model_id=excluded.model_id, request_json=excluded.request_json, result_json=excluded.result_json, updated_at=excluded.updated_at`).run({
+      site: input.site, novel_id: input.novelId, model_id: input.modelId, request_json: JSON.stringify(input.request), result_json: JSON.stringify(input.result), created_at: now, updated_at: now,
+    })
+    return this.getTranslationInitialization(input.site, input.novelId) as TranslationInitialization
+  }
+
+  listAiModels(): AiModelConfig[] {
+    const rows = this.db.prepare('SELECT * FROM ai_models ORDER BY updated_at DESC, id DESC').all() as Array<Record<string, unknown>>
+    return rows.map((row) => this.toAiModel(row))
+  }
+
+  getAiModel(id: number): AiModelConfig | null {
+    const row = this.db.prepare('SELECT * FROM ai_models WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    return row ? this.toAiModel(row) : null
+  }
+
+  upsertAiModel(input: UpsertAiModelInput): AiModelConfig {
+    const now = new Date().toISOString()
+    const headers = JSON.stringify(input.headers ?? {})
+    if (input.id) {
+      this.db.prepare(`UPDATE ai_models SET name=@name, provider=@provider, api_type=@api_type, reasoning_dialect=@reasoning_dialect, reasoning_level=@reasoning_level, response_profile=@response_profile, extra_body_json=@extra_body_json, base_url=@base_url,
+        api_key=@api_key, model=@model, window_tokens=@window_tokens, input_tokens=@input_tokens, output_tokens=@output_tokens,
+        headers_json=@headers_json, enabled=@enabled, updated_at=@updated_at WHERE id=@id`).run({
+        id: input.id, name: input.name, provider: input.provider ?? 'openai-compatible', api_type: input.apiType,
+        reasoning_dialect: input.reasoningDialect ?? 'none', reasoning_level: input.reasoningLevel ?? 'default', response_profile: input.responseProfile ?? 'auto', extra_body_json: JSON.stringify(input.extraBody ?? {}), base_url: input.baseUrl, api_key: input.apiKey, model: input.model,
+        window_tokens: input.windowTokens ?? 1050000, input_tokens: input.inputTokens ?? 922000, output_tokens: input.outputTokens ?? 128000,
+        headers_json: headers, enabled: input.enabled === false ? 0 : 1, updated_at: now,
+      })
+      const model = this.getAiModel(input.id)
+      if (model) return model
+    }
+    const result = this.db.prepare(`INSERT INTO ai_models
+      (name, provider, api_type, reasoning_dialect, reasoning_level, response_profile, extra_body_json, base_url, api_key, model, window_tokens, input_tokens, output_tokens, headers_json, enabled, created_at, updated_at)
+      VALUES (@name, @provider, @api_type, @reasoning_dialect, @reasoning_level, @response_profile, @extra_body_json, @base_url, @api_key, @model, @window_tokens, @input_tokens, @output_tokens, @headers_json, @enabled, @created_at, @updated_at)`).run({
+      name: input.name, provider: input.provider ?? 'openai-compatible', api_type: input.apiType,
+      reasoning_dialect: input.reasoningDialect ?? 'none', reasoning_level: input.reasoningLevel ?? 'default', response_profile: input.responseProfile ?? 'auto', extra_body_json: JSON.stringify(input.extraBody ?? {}), base_url: input.baseUrl, api_key: input.apiKey, model: input.model,
+      window_tokens: input.windowTokens ?? 1050000, input_tokens: input.inputTokens ?? 922000, output_tokens: input.outputTokens ?? 128000,
+      headers_json: headers, enabled: input.enabled === false ? 0 : 1, created_at: now, updated_at: now,
+    })
+    return this.getAiModel(Number(result.lastInsertRowid)) as AiModelConfig
+  }
+
+  deleteAiModel(id: number): boolean {
+    return this.db.prepare('DELETE FROM ai_models WHERE id = ?').run(id).changes > 0
+  }
+
+  private toAiModel(row: Record<string, unknown>): AiModelConfig {
+    let headers: Record<string, string> = {}
+    try { headers = JSON.parse(String(row.headers_json ?? '{}')) as Record<string, string> } catch { headers = {} }
+    return {
+      id: Number(row.id), name: String(row.name), provider: String(row.provider),
+      apiType: String(row.api_type) as AiApiType, reasoningDialect: String(row.reasoning_dialect ?? 'none') as AiModelConfig['reasoningDialect'], reasoningLevel: String(row.reasoning_level ?? 'default') as AiModelConfig['reasoningLevel'], responseProfile: String(row.response_profile ?? 'auto') as ResponseProfile, extraBody: JSON.parse(String(row.extra_body_json ?? '{}')) as Record<string, unknown>, baseUrl: String(row.base_url), apiKey: String(row.api_key ?? ''),
+      model: String(row.model), windowTokens: Number(row.window_tokens ?? 1050000), inputTokens: Number(row.input_tokens ?? 922000),
+      outputTokens: Number(row.output_tokens ?? 128000), headers, enabled: Number(row.enabled) === 1,
+      createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+    }
   }
 
   close(): void {

@@ -6,7 +6,12 @@ import type { NovelLibrary } from '../src/lib/library'
 import type { EpisodeStore } from '../src/lib/store'
 import type { NovelRef, NovelRecord } from '../src/lib/types'
 import { LibraryDb } from './db'
-import type { NovelQuery, NovelSort, ProgressFilter } from './db'
+import type { NovelQuery, NovelSort, ProgressFilter, UpsertAiModelInput } from './db'
+import { initializeTranslation, parseTranslationOptions, selectInitializationEpisodes } from '../src/translation'
+import { createAiModelClient, normalizeBaseUrl, OPENCODE_BASE_URL } from '../src/ai'
+import { AiGenerationError } from '../src/ai-errors'
+import type { TranslationTaskEvent } from '../../shared/translation'
+import { validateReasoning, type ReasoningDialect, type ReasoningLevel, type ResponseProfile } from '../../shared/ai'
 
 export interface LibraryApiDeps {
   library: NovelLibrary
@@ -23,7 +28,30 @@ export interface LibraryApiDeps {
   defaultConcurrency: number
 }
 
+function requestCancellation(req: IncomingMessage, res: ServerResponse) {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  const onClose = () => { if (!res.writableEnded) abort() }
+  req.once('aborted', abort)
+  res.once('close', onClose)
+  if (req.aborted || res.destroyed) abort()
+  return {
+    signal: controller.signal,
+    dispose: () => { req.off('aborted', abort); res.off('close', onClose) },
+  }
+}
+
+function modelFailureStatus(error: unknown): number {
+  if (!(error instanceof AiGenerationError)) return 400
+  if (error.kind === 'rate-limit') return 429
+  if (error.kind === 'timeout') return 504
+  if (error.kind === 'cancelled') return 499
+  if (error.kind === 'rejected' || error.kind === 'refusal') return 400
+  return 502
+}
+
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
+  if (res.destroyed || res.writableEnded) return
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.setHeader('Cache-Control', 'no-store')
@@ -66,6 +94,42 @@ async function readCatalogFile(novelsDir: string, site: string, novelId: string)
   }
 }
 
+
+function normalizeAiModel(body: Record<string, unknown>, id?: number): UpsertAiModelInput {
+  const name = String(body.name ?? '').trim()
+  const provider = String(body.provider ?? 'openai-compatible').trim()
+  const baseUrl = normalizeBaseUrl(String(body.baseUrl ?? '').trim() || (provider === 'opencode' ? OPENCODE_BASE_URL : 'https://api.openai.com/v1'))
+  const model = String(body.model ?? '').trim()
+  const apiType = body.apiType === 'chat-completions' ? 'chat-completions' : 'responses'
+  const reasoningDialect = String(body.reasoningDialect ?? 'none') as ReasoningDialect
+  const reasoningLevel = String(body.reasoningLevel ?? 'default') as ReasoningLevel
+  validateReasoning(reasoningDialect, reasoningLevel)
+  const responseProfile = String(body.responseProfile ?? 'auto') as ResponseProfile
+  if (!['auto', 'generic', 'deepseek', 'off'].includes(responseProfile)) throw new Error('响应适配方式无效')
+  const extraBody = body.extraBody ?? {}
+  if (typeof extraBody !== 'object' || extraBody === null || Array.isArray(extraBody)) throw new Error('扩展请求参数必须为 JSON 对象')
+  if (!name || !baseUrl || !model) throw new Error('模型名称、Base URL 和模型名称不能为空')
+  const headers = typeof body.headers === 'object' && body.headers !== null ? body.headers as Record<string, string> : {}
+  const numberValue = (value: unknown, fallback: number): number => {
+    const n = value ?? fallback
+    if (typeof n !== 'number' || !Number.isSafeInteger(n) || n <= 0) throw new Error('Token 上限必须是正整数')
+    return n
+  }
+  if (body.apiType !== 'responses' && body.apiType !== 'chat-completions') throw new Error('API 协议无效')
+  if (provider === 'opencode' && !String(body.apiKey ?? '').trim()) throw new Error('OpenCode 需要 API Key')
+  const endpoint = new URL(baseUrl)
+  if (!['http:', 'https:'].includes(endpoint.protocol)) throw new Error('Base URL 必须使用 HTTP 或 HTTPS')
+  if (Array.isArray(headers) || Object.values(headers).some((value) => typeof value !== 'string')) throw new Error('请求头必须是字符串键值对象')
+  for (const [key, value] of Object.entries(headers)) {
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(key) || /[\r\n]/.test(value)) throw new Error('请求头名称或值无效')
+  }
+  return {
+    id, name, provider, apiType, reasoningDialect, reasoningLevel, responseProfile, extraBody: extraBody as Record<string, unknown>, baseUrl, apiKey: String(body.apiKey ?? ''), model,
+    windowTokens: numberValue(body.windowTokens, 1050000), inputTokens: numberValue(body.inputTokens, 922000), outputTokens: numberValue(body.outputTokens, 128000),
+    headers, enabled: body.enabled !== false,
+  }
+}
+
 export function createLibraryApiHandler(deps: LibraryApiDeps) {
   const { library, store, db, auditLogPath, novelsDir, episodesDir, parseRange, detectSite, syncFromDisk, defaultConcurrency } = deps
 
@@ -85,6 +149,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
     finishedAt: number | null
   }
   const jobs = new Map<string, DownloadJob>()
+  const initializationJobs = new Set<string>()
 
   const readCatalog = (site: string, novelId: string) => readCatalogFile(novelsDir, site, novelId)
 
@@ -94,6 +159,140 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
     const method = req.method ?? 'GET'
 
     try {
+
+      if (segments.length === 2 && segments[0] === 'settings' && segments[1] === 'models' && method === 'GET') {
+        sendJson(res, 200, db.listAiModels())
+        return
+      }
+
+      if (segments.length === 2 && segments[0] === 'settings' && segments[1] === 'models' && method === 'POST') {
+        const body = await readBody(req)
+        try {
+          sendJson(res, 201, db.upsertAiModel(normalizeAiModel(body)))
+        } catch (err) {
+          sendJson(res, 400, { error: err instanceof Error ? err.message : '配置无效' })
+        }
+        return
+      }
+
+      if (segments.length === 3 && segments[0] === 'settings' && segments[1] === 'models' && (method === 'GET' || method === 'PUT')) {
+        const id = Number(segments[2])
+        if (!Number.isSafeInteger(id) || id <= 0) { sendJson(res, 400, { error: '模型 ID 无效' }); return }
+        const existing = db.getAiModel(id)
+        if (!existing) { sendJson(res, 404, { error: '模型不存在' }); return }
+        if (method === 'GET') { sendJson(res, 200, existing); return }
+        const body = await readBody(req)
+        try {
+          sendJson(res, 200, db.upsertAiModel(normalizeAiModel(body, id)))
+        } catch (err) {
+          sendJson(res, 400, { error: err instanceof Error ? err.message : '配置无效' })
+        }
+        return
+      }
+
+      if (segments.length === 3 && segments[0] === 'settings' && segments[1] === 'models' && method === 'DELETE') {
+        if (!db.deleteAiModel(Number(segments[2]))) {
+          sendJson(res, 404, { error: '模型不存在' })
+          return
+        }
+        sendJson(res, 200, { ok: true })
+        return
+      }
+
+      if (segments.length === 4 && segments[0] === 'settings' && segments[1] === 'models' && segments[3] === 'test' && method === 'POST') {
+        const model = db.getAiModel(Number(segments[2]))
+        if (!model) { sendJson(res, 404, { error: '模型不存在' }); return }
+        const body = await readBody(req)
+        const cancellation = requestCancellation(req, res)
+        try {
+          const result = await createAiModelClient(model).generate({
+            system: typeof body.system === 'string' ? body.system : undefined,
+            prompt: typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt : '请回复：连接成功',
+            temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
+            maxTokens: typeof body.maxTokens === 'number' ? body.maxTokens : undefined,
+            signal: cancellation.signal,
+          })
+          sendJson(res, 200, result)
+        } catch (err) {
+          sendJson(res, modelFailureStatus(err), { error: err instanceof Error ? err.message : '模型调用失败' })
+        } finally { cancellation.dispose() }
+        return
+      }
+
+      if (segments.length === 5 && segments[0] === 'library' && segments[3] === 'translation' && segments[4] === 'initialize') {
+        const site = segments[1]
+        const novelId = segments[2]
+        if (method === 'GET') {
+          sendJson(res, 200, db.getTranslationInitialization(site, novelId))
+          return
+        }
+        if (method === 'POST') {
+          const key = JSON.stringify([site, novelId])
+          if (initializationJobs.has(key)) { sendJson(res, 409, { error: '这本书的翻译概要正在生成，请勿重复提交' }); return }
+          initializationJobs.add(key)
+          const cancellation = requestCancellation(req, res)
+          const streaming = req.headers.accept?.includes('application/x-ndjson') ?? false
+          let heartbeat: ReturnType<typeof setInterval> | undefined
+          let attempts = 0
+          const emit = (event: TranslationTaskEvent) => {
+            if (res.destroyed || res.writableEnded) return
+            // Bound memory if the browser stops consuming output.
+            if (res.writableLength > 4 * 1024 * 1024) { res.destroy(); return }
+            res.write(JSON.stringify(event) + '\n')
+          }
+          try {
+            const body = await readBody(req)
+            const options = parseTranslationOptions(body)
+            const model = db.getAiModel(options.modelId)
+            if (!model || !model.enabled) { sendJson(res, 400, { error: '模型不存在或未启用' }); return }
+            const record = await readCatalog(site, novelId)
+            if (!record) { sendJson(res, 404, { error: '作品目录不存在' }); return }
+            if (db.isTrashed(site, novelId)) { sendJson(res, 409, { error: '请先从回收站恢复作品' }); return }
+            const selected = selectInitializationEpisodes(record, options.chapterCount)
+            if (streaming) {
+              res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' })
+              res.flushHeaders()
+              emit({ type: 'started', at: Date.now(), modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, episodeCount: selected.length })
+              emit({ type: 'phase', phase: 'reading', at: Date.now() })
+              heartbeat = setInterval(() => emit({ type: 'heartbeat', at: Date.now() }), 10000)
+              heartbeat.unref()
+            }
+            const contents = []
+            for (const episode of selected) {
+              const content = await store.read({ site, novelId, canonicalUrl: record.source.url, variant: null }, episode.index)
+              if (!content || !content.body.trim()) {
+                const message = `第 ${episode.index} 话尚未下载或正文为空，请先下载该范围`
+                if (streaming) { emit({ type: 'error', message, attempts, at: Date.now() }); res.end() }
+                else sendJson(res, 409, { error: message })
+                return
+              }
+              contents.push(content)
+            }
+            if (streaming) emit({ type: 'phase', phase: 'preparing', at: Date.now() })
+            const initialized = await initializeTranslation(record, contents, options, model, cancellation.signal, streaming ? (event) => {
+              if (event.type === 'attempt') attempts = event.attempt
+              emit(event)
+            } : undefined)
+            cancellation.signal.throwIfAborted()
+            if (streaming) emit({ type: 'phase', phase: 'saving', at: Date.now() })
+            const saved = db.saveTranslationInitialization({ site, novelId, modelId: model.id, request: initialized.request, result: initialized.result })
+            if (streaming) { emit({ type: 'completed', saved, at: Date.now() }); res.end() }
+            else sendJson(res, 200, saved)
+          } catch (err) {
+            const message = err instanceof Error ? err.message : '初始化翻译材料失败'
+            if (res.headersSent) {
+              emit({ type: 'error', message, attempts, at: Date.now() })
+              if (!res.destroyed && !res.writableEnded) res.end()
+            } else sendJson(res, modelFailureStatus(err), { error: message })
+          } finally {
+            if (heartbeat) clearInterval(heartbeat)
+            cancellation.dispose()
+            initializationJobs.delete(key)
+          }
+          return
+        }
+      }
+
       if (segments.length === 1 && segments[0] === 'sites' && method === 'GET') {
         sendJson(res, 200, library.sites)
         return

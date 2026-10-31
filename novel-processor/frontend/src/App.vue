@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import AppToast from '@/components/AppToast.vue'
 import { useSites } from '@/stores/sites'
 
-const { sites, load } = useSites()
-const online = computed(() => sites.value.length > 0)
+const { load } = useSites()
 
 onMounted(() => void load())
 </script>
 
 <template>
   <div class="app-shell">
-    <AppHeader :online="online" />
+    <AppHeader />
 
     <RouterView v-slot="{ Component }">
       <Transition name="page" mode="out-in">

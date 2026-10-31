@@ -420,3 +420,66 @@ input {
     height: 20px !important;
   }
 }
+
+html[data-theme='dark'] .detail-title,
+html[data-theme='dark'] .detail .author,
+html[data-theme='dark'] .detail .stat strong,
+html[data-theme='dark'] .detail .group-title,
+html[data-theme='dark'] .detail .ep-title.done,
+html[data-theme='dark'] .detail .text-btn:hover {
+  color: #f1f7fa;
+}
+
+html[data-theme='dark'] .detail .eyebrow,
+html[data-theme='dark'] .detail .source-link,
+html[data-theme='dark'] .detail .summary-toggle,
+html[data-theme='dark'] .detail .group-caret,
+html[data-theme='dark'] .detail .ep-index.done,
+html[data-theme='dark'] .detail .ep-state.on {
+  color: #a9d4ee;
+}
+
+html[data-theme='dark'] .detail .eyebrow--faint,
+html[data-theme='dark'] .detail .progress-text,
+html[data-theme='dark'] .detail .list-tools,
+html[data-theme='dark'] .detail .ep-date,
+html[data-theme='dark'] .detail .ep-index,
+html[data-theme='dark'] .detail .group-count {
+  color: #a7bbc4;
+}
+
+html[data-theme='dark'] .detail .summary-text,
+html[data-theme='dark'] .detail .job-text,
+html[data-theme='dark'] .detail .ep-title {
+  color: #c9d9df;
+}
+
+html[data-theme='dark'] .detail .summary-block,
+html[data-theme='dark'] .detail .concurrency,
+html[data-theme='dark'] .detail .range-field input {
+  background: #22343e;
+}
+
+html[data-theme='dark'] .detail .chip {
+  background: #314b59;
+  color: #d6e8ef;
+}
+
+html[data-theme='dark'] .detail .chip--accent {
+  background: #28516a;
+  color: #bfe3f5;
+}
+
+html[data-theme='dark'] .detail .job-line {
+  background: #25495d;
+  color: #c0e5f7;
+}
+
+html[data-theme='dark'] .detail .progress-track {
+  background: #3a515d;
+}
+
+.pill {
+  justify-content: center;
+  text-align: center;
+}

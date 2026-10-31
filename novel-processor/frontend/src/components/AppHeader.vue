@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import ThemeToggle from '@/components/ThemeToggle.vue'
-
-defineProps<{
-  online: boolean
-}>()
+import { RouterLink } from 'vue-router'
 </script>
 
 <template>
@@ -18,12 +15,13 @@ defineProps<{
       <span class="brand-name">novel<span>processor</span></span>
     </div>
 
-    <ThemeToggle />
-
-    <div class="header-state" :class="{ 'is-offline': !online }">
-      <span class="status-dot" :class="{ 'status-dot--live': online }" />
-      <span>{{ online ? '本地数据已连接' : '数据未就绪' }}</span>
+    <div class="header-actions">
+      <RouterLink class="settings-link" to="/settings" aria-label="设置" title="设置">
+<span class="settings-icon" aria-hidden="true" />
+      </RouterLink>
+      <ThemeToggle />
     </div>
+
   </header>
 </template>
 
@@ -70,36 +68,37 @@ defineProps<{
   color: var(--blue-dark);
 }
 
-.header-state {
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 4px;
   margin-left: auto;
-  padding: 8px 15px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 60%);
+}
+
+.settings-link {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   color: var(--muted);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
-.header-state.is-offline {
-  background: rgb(214 158 158 / 10%);
-  color: #9c6a6a;
+.settings-link:hover {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
 }
 
-.header-state.is-offline .status-dot {
-  background: #c98d8d;
-  box-shadow: 0 0 0 4px rgb(201 141 141 / 16%);
+.settings-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: url('/gear.svg') center / contain no-repeat;
+  mask: url('/gear.svg') center / contain no-repeat;
 }
 
-@media (max-width: 900px) {
-  .header-state {
-    font-size: 10px;
-  }
-}
 
 @media (max-width: 580px) {
   .site-header {
@@ -112,7 +111,7 @@ defineProps<{
 @media (max-width: 380px) {
   .site-header { gap: 10px; }
   .brand { gap: 8px; }
+  .header-actions { gap: 0; }
   .brand-name { font-size: 13px; }
-  .header-state { padding: 8px 10px; letter-spacing: 0; }
 }
 </style>

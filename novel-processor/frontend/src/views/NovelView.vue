@@ -133,6 +133,9 @@ onUnmounted(() => {
       <span v-if="entry" class="crumb-current">{{ entry.source.novelId }}</span>
 
       <div v-if="entry" class="crumb-actions">
+        <RouterLink class="pill pill--small translation-entry" :to="{ name: 'translation', params: { site, novelId } }">
+          AI 翻译
+        </RouterLink>
         <button class="text-btn" type="button" :disabled="refreshing || !!busy" @click="handleRefresh">
           {{ refreshing ? '更新中…' : '更新目录' }}
         </button>
@@ -298,4 +301,6 @@ onUnmounted(() => {
   .crumb-actions button { min-height: 44px; }
   .state-actions { flex-wrap: wrap; justify-content: center; }
 }
+
+.translation-entry { flex: none; }
 </style>
