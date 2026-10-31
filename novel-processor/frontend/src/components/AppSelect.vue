@@ -182,7 +182,9 @@ onUnmounted(() => document.removeEventListener('pointerdown', outside))
   left: 0;
   min-width: 100%;
   width: max-content;
-  max-width: 280px;
+  max-width: min(280px, 100%);
+  max-height: min(50vh, 320px);
+  overflow-y: auto;
   padding: 6px;
   border-radius: 18px;
   background: rgb(255 255 255 / 97%);
@@ -240,13 +242,16 @@ onUnmounted(() => document.removeEventListener('pointerdown', outside))
   color: var(--blue-dark);
 }
 
-@media (max-width: 580px) {
+@media (max-width: 720px) {
   .app-select {
     width: 100%;
   }
   .trigger {
     width: 100%;
+    min-height: 42px;
+    height: 42px;
     justify-content: space-between;
+    font-size: 12px;
   }
 }
 </style>

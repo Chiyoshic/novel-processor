@@ -290,4 +290,12 @@ onUnmounted(() => {
   50% { opacity: 1; transform: scaleX(1); }
 }
 
+@media (max-width: 580px) {
+  .novel { padding-bottom: 36px; }
+  .crumbs { flex-wrap: wrap; gap: 4px 10px; padding: 12px 0; }
+  .crumb-current { overflow-wrap: anywhere; }
+  .crumb-actions { width: 100%; margin-left: 0; }
+  .crumb-actions button { min-height: 44px; }
+  .state-actions { flex-wrap: wrap; justify-content: center; }
+}
 </style>

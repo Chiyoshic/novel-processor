@@ -71,12 +71,14 @@ function submit(): void {
 <style scoped>
 .import-band {
   position: relative;
-  padding: 18px 0 20px;
+  padding: 18px 20px 20px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   background: rgb(255 255 255 / 46%);
 }
 
 .import-inner {
   position: relative;
+  width: 100%;
 }
 
 .import-form {
@@ -126,18 +128,36 @@ function submit(): void {
 }
 
 @media (max-width: 580px) {
+  .import-band {
+    padding: 14px 16px 16px;
+  }
   .input-shell {
-    flex-wrap: wrap;
-    border-radius: 999px;
-    padding: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 0;
+    background: transparent;
+  }
+  .input-shell:focus-within {
+    box-shadow: none;
   }
   .input-shell input {
-    flex: 1 1 100%;
-    padding: 6px 6px 10px;
+    flex: none;
+    width: 100%;
+    min-height: 42px;
+    padding: 0 15px;
+    border-radius: 999px;
+    background: var(--white);
+    font-size: 14px;
+  }
+  .input-shell input:focus {
+    box-shadow: 0 10px 26px rgb(49 83 105 / 9%);
   }
   .input-shell .pill {
     width: 100%;
+    min-height: 42px;
     justify-content: space-between;
+    font-size: 13px;
   }
 }
 </style>

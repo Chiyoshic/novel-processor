@@ -1,108 +1,54 @@
-# novel-processor
+# Novel Processor
 
-个人小说库处理工具。把多个小说站点的作品归一化成统一 JSON，供前端整理、检索、导出。
+个人小说库：Vue 前端与独立 Node.js API 分别部署，当前支持小説家になろう（syosetu）。
 
-当前支持：**小説家になろう（syosetu）**
+## 启动后端
 
-- 前端 API 参考：[`docs/api.md`](docs/api.md)
-- 架构设计：[`docs/architecture.md`](docs/architecture.md)
+需要 Docker 和 Docker Compose。首次启动在项目根目录执行：
 
-## 界面
-
-| 路由 | 页面 | 内容 |
-| --- | --- | --- |
-| `/` | 书架 | 搜索、状态 / 进度 / 题材 / 标签分类筛选、排序、卡片网格 |
-| `/novel/:site/:id` | 作品 | 元数据、章节目录、区间下载与并发控制、更新目录、删除 |
-| `/novel/:site/:id/episodes/:n` | 阅读 | 整页正文、上一话 / 下一话、键盘 ←/→ |
-| `/trash` | 回收站 | 恢复 / 永久删除 / 清空 |
-
-删除分两级：**删除 = 移入回收站**（不动文件，可恢复）；**永久删除**（在回收站内二次确认）才会移除磁盘文件。
-
-```bash
-npm run dev   # 打开 http://localhost:5173
+```sh
+cp backend/.env.example backend/.env
+cd backend
+docker compose up -d --build
 ```
 
-## 前端用法（不经过界面，直接调方法）
+后端默认映射到宿主机 **64226**，容器内监听 8080。查看状态和日志：
 
-所有能力都是 `NovelLibrary` 的方法，浏览器可直接调用（无需 Node）：
-
-```ts
-import { createNovelLibrary } from '@/lib'
-
-const library = createNovelLibrary({ concurrency: 4 })
-
-const catalog = await library.fetchCatalog('https://ncode.syosetu.com/n4703ix/')
-const result = await library.downloadEpisodes('n4703ix', {
-  range: '1-20',
-  onProgress: (p) => console.log(`${p.page}/${p.totalPages}`),
-})
+```sh
+docker compose ps
+docker compose logs -f api
+curl http://127.0.0.1:64226/healthz
 ```
 
-| 方法 | 说明 |
-| --- | --- |
-| `sites` / `detectSite(input)` | 站点能力自省 |
-| `resolve(input)` | 输入 → 规范引用 |
-| `fetchCatalog(input, opts?)` | 抓目录（元数据 + 章 + 话） |
-| `fetchEpisode(input, index, opts?)` | 抓单话正文 |
-| `downloadEpisodes(input, opts?)` | 批量下载（自动续传） |
-| `listDownloaded` / `readEpisode` / `getManifest` | 本地库读取 |
-| `getDownloadStatus(input, catalog)` | 下载进度 |
+`backend/.env` 控制监听端口、抓取并发、请求节奏、超时、重试、数据路径和 CORS。更改环境变量后运行 `docker compose up -d` 重建容器；修改代码后运行 `docker compose up -d --build`。Compose 的 `API_PORT` 是宿主机端口，`HTTP_PORT` 是容器内部端口。
 
-浏览器直连站点会被 CORS 拦下，开发期用已配好的 Vite 代理 + `rewriteUrl`，
-详见 [`docs/api.md`](docs/api.md) 第 4 节。
+## 前端独立部署
 
-## 调试用 CLI
-
-CLI 只是这些方法的一层壳，用于本地验证与批量灌数据，删除它不影响库。
-
-```bash
-npm install
-
-npm run fetch -- n4703ix                 # 抓目录
-npm run fetch -- n4703ix --all -c 4      # 抓全部正文（4 并发）
-npm run fetch -- n4703ix --range 1-20    # 抓指定区间
+```sh
+cd frontend
+npm ci
+cp .env.example .env
+npm run dev
+npm run build
 ```
 
-输出：
+开发服务器默认把 `/api` 代理到 `http://localhost:64226`。生产环境可让前端托管服务器将 `/api/` 反向代理到后端，或在**构建前**设置 `VITE_API_BASE=https://后端域名/api`。跨域直连时，后端 `CORS_ORIGINS` 应配置前端的完整 origin，例如 `https://frontend.example.com`；多个 origin 使用逗号分隔。HTTPS 前端应通过 HTTPS 访问后端。
 
-```
-data/novels/<site>/<id>.json             # 目录：元数据 + 章 + 话（真源）
-data/episodes/<site>/<id>/<n>.json       # 单话正文（真源）
-data/episodes/<site>/<id>/_manifest.json # 下载清单
-data/library.db                          # SQLite 索引（可随时重建）
-```
+前端没有认证机制；当前 API 能修改和永久删除本地书库。不要将端口直接暴露给不可信网络，应通过具备访问控制的网络或反向代理部署。
 
-## 数据存储
+## 持久化与备份
 
-| 层 | 内容 | 说明 |
-| --- | --- | --- |
-| JSON 文件 | 目录、单话正文 | **真源**。可读、可备份、单文件损坏只影响一话 |
-| SQLite | 作品 / 章 / 话 / 是否有正文 | **索引**。列表、搜索、筛选、统计走 DB，不扫文件 |
+Compose 将项目的 `data/` 目录挂载到容器 `/app/data`。目录包含作品目录 JSON、单话 JSON、SQLite 数据库及其 WAL/SHM 文件和审计日志。停止或重建容器不会删除此目录。不要同时运行多个后端进程访问同一个数据目录。
 
-两者是「索引 ↔ 真源」关系：DB 可从磁盘完整重建（`POST /api/sync`），
-启动时也会自动对齐一次，所以删掉 `library.db` 不会丢任何数据。
+SQLite 的回收站状态仅存在数据库中，因此备份应包含**整个 data 目录**；不要只备份 JSON。建议先停止服务再复制目录，以确保 SQLite 与 JSON 一致。JSON 可用于重建目录和正文索引，但无法恢复丢失的回收站状态。
 
-CLI 参数：`-e/--episode`、`-r/--range`、`-a/--all`、`-c/--concurrency`、`--interval`、
-`--overwrite`、`-o/--out`、`--no-enrich`、`--max-pages`、`-q/--quiet`。
+## 结构
 
-## 并发
+- `frontend/`：Vue 界面及 API 客户端。
+- `backend/src/lib/`：采集、解析和下载逻辑。
+- `backend/server/`：HTTP API 与 SQLite 索引。
+- `backend/src/storage/`：文件存储。
+- `shared/types.ts`：前后端共享的领域模型类型。
+- `data/`：持久化数据，不进入 Git 或 Docker 构建上下文。
 
-并发数与请求节奏是独立约束：只提并发不放宽间隔，吞吐不会提升。
-实测 20 话：`c=1` 28.4s → `c=4` 6.6s → `c=8` 5.7s，**建议 4**。
-
-```ts
-createNovelLibrary({ concurrency: 4, minIntervalMs: 200 })
-```
-
-## 开发
-
-```bash
-npm run dev        # 前端（Vue 3 + Vite）
-npm run typecheck  # 类型检查
-npm run build      # 构建
-npx tsx scripts/api-demo.ts n4703ix   # 可运行的 API 示例 / 冒烟测试
-```
-
-采集内核在 `src/lib/`，与 Vue 无关；新增站点见架构文档第 9 节。
-
-> 采集仅供个人阅读整理使用，请遵守各站点使用条款。
+历史设计参考 `docs/architecture.md` 与 `docs/api.md`；其中关于 Vite 中间件及浏览器直接调用采集库的部分属于旧架构，以本文和代码为准。

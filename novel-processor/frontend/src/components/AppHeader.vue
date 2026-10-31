@@ -105,4 +105,10 @@ defineProps<{
     font-size: 15px;
   }
 }
+@media (max-width: 380px) {
+  .site-header { gap: 10px; }
+  .brand { gap: 8px; }
+  .brand-name { font-size: 13px; }
+  .header-state { padding: 8px 10px; letter-spacing: 0; }
+}
 </style>

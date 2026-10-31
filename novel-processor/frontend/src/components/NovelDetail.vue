@@ -717,4 +717,22 @@ watch(
     display: none;
   }
 }
+@media (max-width: 580px) {
+  .detail { padding: 20px 16px; }
+  .detail-head { gap: 10px; }
+  .detail-title { font-size: 23px; overflow-wrap: anywhere; }
+  .head-meta { gap: 6px; }
+  .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { min-width: 0; padding-right: 8px; }
+  .stat strong { font-size: 21px; overflow-wrap: anywhere; }
+  .range-field input { min-width: 0; min-height: 42px; font-size: 14px; }
+  .toolbar-actions { flex-wrap: wrap; justify-content: flex-start; }
+  .concurrency { min-height: 42px; }
+  .episode-list { max-height: 55vh; }
+  .episode { min-height: 44px; gap: 6px; padding: 9px 4px; grid-template-columns: 30px minmax(0, 1fr) 40px; }
+  .group-title { min-width: 0; overflow-wrap: anywhere; }
+  .group-count { flex: none; }
+  .list-tools .text-btn { min-height: 40px; }
+  .summary-toggle { min-height: 40px; }
+}
 </style>

@@ -399,4 +399,19 @@ onUnmounted(() => {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
+@media (max-width: 580px) {
+  .shelf { padding-bottom: 36px; }
+  .shelf-head { flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-top: 20px; }
+  .head-left { flex-wrap: wrap; gap: 2px 9px; }
+  .head-left h1 { font-size: 25px; }
+  .summary { font-size: 10px; }
+  .head-right { gap: 12px; }
+  .text-btn { min-height: 40px; display: inline-flex; align-items: center; font-size: 11px; }
+  .toolbar { margin-top: 8px; }
+  .search-shell { height: 44px; padding-inline: 15px; }
+  .search-shell input { font-size: 14px; }
+  .filters { margin-top: 10px; padding: 4px 10px; }
+  .grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .state { padding: 56px 16px; }
+}
 </style>

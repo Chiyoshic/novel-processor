@@ -109,4 +109,10 @@ const model = defineModel<string>({ default: '' })
     padding-top: 0;
   }
 }
+@media (max-width: 580px) {
+  .filter-row { gap: 8px; }
+  .filter-label { width: 32px; padding-top: 11px; }
+  .chips { min-width: 0; }
+  .chip-btn { min-height: 36px; padding-inline: 10px; font-size: 11px; }
+}
 </style>

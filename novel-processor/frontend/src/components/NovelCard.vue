@@ -186,4 +186,8 @@ function formatNumber(n: number | null): string {
   color: #b3c0c7;
   text-align: right;
 }
+@media (max-width: 580px) {
+  .card { min-height: 0; padding: 16px; }
+  .card-title { overflow-wrap: anywhere; }
+}
 </style>

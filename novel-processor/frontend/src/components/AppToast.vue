@@ -17,7 +17,7 @@ const { toast } = useToast()
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 28px;
+  bottom: max(28px, env(safe-area-inset-bottom));
   z-index: 95;
   display: flex;
   align-items: center;

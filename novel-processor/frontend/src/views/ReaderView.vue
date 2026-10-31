@@ -337,4 +337,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
     line-height: 1.95;
   }
 }
+@media (max-width: 580px) {
+  .reader-page { padding-bottom: 36px; }
+  .crumbs { padding: 12px 0; }
+  .crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crumb-current, .crumb-sep { flex: none; }
+  .sheet { padding: 20px 16px; }
+  .head h1, .head .eyebrow { overflow-wrap: anywhere; }
+  .meta { flex-wrap: wrap; }
+  .pager { gap: 4px; }
+  .pager .pill { justify-content: center; gap: 5px; padding-inline: 10px; }
+}
 </style>

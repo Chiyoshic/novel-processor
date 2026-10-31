@@ -300,3 +300,9 @@ input {
     width: min(100% - 40px, 680px);
   }
 }
+
+@media (max-width: 580px) {
+  .section-wrap { width: calc(100% - 32px); }
+  .pill { min-height: 42px; }
+  input, select, textarea { font-size: 14px; }
+}

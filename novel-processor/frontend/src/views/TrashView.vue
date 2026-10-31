@@ -372,4 +372,15 @@ onMounted(() => void load())
     gap: 12px;
   }
 }
+@media (max-width: 580px) {
+  .trash { padding-bottom: 36px; }
+  .trash-head { flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+  .head-left { flex-wrap: wrap; gap: 4px 10px; }
+  .head-actions { flex-wrap: wrap; }
+  .text-btn, .text-danger { min-height: 44px; }
+  .row { padding: 14px 16px; gap: 4px; }
+  .row-main { width: 100%; }
+  .row-title { white-space: normal; overflow-wrap: anywhere; }
+  .row-meta { flex-wrap: wrap; }
+}
 </style>

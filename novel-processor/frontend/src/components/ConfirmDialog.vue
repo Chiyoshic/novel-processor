@@ -141,4 +141,10 @@ onUnmounted(() => {
 .dialog-leave-to .dialog-card {
   transform: translateY(8px) scale(0.98);
 }
+@media (max-width: 580px) {
+  .dialog-root { padding: 16px; }
+  .dialog-card { padding: 22px 20px; }
+  .dialog-actions { flex-wrap: wrap; }
+  .dialog-actions .pill { justify-content: center; flex: 1; min-height: 42px; }
+}
 </style>

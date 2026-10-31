@@ -43,7 +43,7 @@ onMounted(() => void load())
   justify-content: space-between;
   gap: 16px;
   margin-top: auto;
-  padding: 26px 0 24px;
+  padding: 26px 0 max(24px, env(safe-area-inset-bottom));
 }
 
 .footer-name {

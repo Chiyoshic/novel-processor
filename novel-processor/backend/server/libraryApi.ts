@@ -1,23 +1,6 @@
-/**
- * 本地数据 API（Vite 插件）。
- *
- * 为什么放在 dev server 里而不是独立服务：
- * 前端要读的是磁盘上的 `data/`，浏览器没有文件系统权限；
- * 挂一个中间件就能直接复用 `NovelLibrary` + `FsEpisodeStore`，
- * 不需要额外进程，也不需要把抓取逻辑复制一份到服务端。
- *
- * 数据分层：
- * - JSON 文件 = 真源（目录 + 单话正文，可读可备份）
- * - SQLite   = 索引（列表 / 搜索 / 统计 / 下载状态），随时可从磁盘重建
- *
- * 所有业务逻辑都在 `src/lib` 里，这里只做「路由 + 序列化」。
- *
- * 注：对 `src/lib` 的依赖使用**动态 import**，
- * 这样 Vite 的配置文件加载器不会去解析这些源码模块
- * （否则会触发 "config uses features unsupported by configLoader: native" 警告）。
- */
+/** 独立 Node HTTP 服务的书库 API，保持既有 JSON 契约。 */
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { NovelLibrary } from '../src/lib/library'
 import type { EpisodeStore } from '../src/lib/store'
@@ -29,7 +12,7 @@ export interface LibraryApiDeps {
   library: NovelLibrary
   store: EpisodeStore
   db: LibraryDb
-  dataDir: string
+  auditLogPath: string
   novelsDir: string
   episodesDir: string
   parseRange: (spec: string) => number[]
@@ -37,6 +20,7 @@ export interface LibraryApiDeps {
   detectSite: (input: string) => string | null
   /** 从磁盘重建索引 */
   syncFromDisk: () => Promise<{ novels: number; episodes: number }>
+  defaultConcurrency: number
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -52,11 +36,11 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
  * 回收站状态只存在 DB 里（磁盘上没有对应文件），一旦索引被外部清掉就无从追溯。
  * 这里按行追加 JSONL，便于事后确认「是谁、什么时候」改了状态。
  */
-async function audit(dataDir: string, action: string, detail: Record<string, unknown>): Promise<void> {
+async function audit(auditLogPath: string, action: string, detail: Record<string, unknown>): Promise<void> {
   const line = `${JSON.stringify({ at: new Date().toISOString(), action, ...detail })}\n`
   try {
-    await mkdir(dataDir, { recursive: true })
-    await appendFile(join(dataDir, 'audit.log'), line, 'utf8')
+    await mkdir(dirname(auditLogPath), { recursive: true })
+    await appendFile(auditLogPath, line, 'utf8')
   } catch {
     // 审计失败不影响主流程
   }
@@ -83,7 +67,7 @@ async function readCatalogFile(novelsDir: string, site: string, novelId: string)
 }
 
 export function createLibraryApiHandler(deps: LibraryApiDeps) {
-  const { library, store, db, dataDir, novelsDir, episodesDir, parseRange, detectSite, syncFromDisk } = deps
+  const { library, store, db, auditLogPath, novelsDir, episodesDir, parseRange, detectSite, syncFromDisk, defaultConcurrency } = deps
 
   /**
    * 下载任务的内存进度表。
@@ -157,7 +141,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           await rm(join(novelsDir, item.site, `${item.novelId}.json`), { force: true })
           await rm(join(episodesDir, item.site, item.novelId), { recursive: true, force: true })
         }
-        await audit(dataDir, 'empty-trash', { removed: removed.map((item) => `${item.site}/${item.novelId}`) })
+        await audit(auditLogPath, 'empty-trash', { removed: removed.map((item) => `${item.site}/${item.novelId}`) })
         sendJson(res, 200, { removed: removed.length, stats: db.stats() })
         return
       }
@@ -229,7 +213,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
               sendJson(res, 404, { error: '作品不存在或已在回收站' })
               return
             }
-            await audit(dataDir, 'trash', { site, novelId })
+            await audit(auditLogPath, 'trash', { site, novelId })
             sendJson(res, 200, { ok: true, mode: 'trash' })
             return
           }
@@ -241,7 +225,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           await rm(join(novelsDir, site, `${novelId}.json`), { force: true })
           await rm(join(episodesDir, site, novelId), { recursive: true, force: true })
           db.purgeNovel(site, novelId)
-          await audit(dataDir, 'purge', { site, novelId })
+          await audit(auditLogPath, 'purge', { site, novelId })
           sendJson(res, 200, { ok: true, mode: 'purge' })
           return
         }
@@ -252,7 +236,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             sendJson(res, 404, { error: '作品不在回收站中' })
             return
           }
-          await audit(dataDir, 'restore', { site, novelId })
+          await audit(auditLogPath, 'restore', { site, novelId })
           sendJson(res, 200, { ok: true })
           return
         }
@@ -319,7 +303,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           const range = typeof body.range === 'string' && body.range.trim() ? body.range : undefined
           const all = body.all === true
           const overwrite = body.overwrite === true
-          const concurrency = Number(body.concurrency ?? 4)
+          const concurrency = Number(body.concurrency ?? defaultConcurrency)
 
           let indices: number[] | undefined
           if (range) {

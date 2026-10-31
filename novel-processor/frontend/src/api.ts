@@ -94,8 +94,10 @@ export interface DownloadSummary {
   manifest: { have: number }
 }
 
+const apiBase = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })

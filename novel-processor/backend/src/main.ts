@@ -113,12 +113,13 @@ async function main(): Promise<void> {
     library,
     store,
     db,
-    dataDir: appConfig.dataDir,
+    auditLogPath: appConfig.auditLogPath,
     novelsDir: appConfig.novelsDir,
     episodesDir: appConfig.episodesDir,
     parseRange: parseEpisodeRange,
     detectSite,
     syncFromDisk,
+    defaultConcurrency: appConfig.fetchConcurrency,
   })
 
   const server = createServer(async (req, res) => {
