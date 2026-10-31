@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Episode, NovelRecord } from '@/lib'
+import type { DownloadJob } from '@/api'
+import { detectLang } from '@/utils/lang'
 
 const props = defineProps<{
   catalog: NovelRecord
   downloaded: Set<number>
   busy: string | null
+  job: DownloadJob | null
 }>()
 
 const emit = defineEmits<{
@@ -16,6 +19,13 @@ const emit = defineEmits<{
 const rangeInput = ref('')
 const concurrency = defineModel<number>('concurrency', { default: 4 })
 const collapsed = ref<Set<string>>(new Set())
+/** 作品简介（あらすじ）默认折叠，长简介不必占满首屏 */
+const summaryOpen = ref(false)
+
+const summary = computed(() => props.catalog.meta.summary.trim())
+const summaryIsLong = computed(() => summary.value.length > 140 || summary.value.split('\n').length > 4)
+/** 内容语言：决定标题与正文用日文还是中文衬线字形 */
+const lang = computed(() => detectLang(props.catalog.meta.title, props.catalog.meta.summary))
 
 interface Group {
   key: string
@@ -54,6 +64,15 @@ const total = computed(() => props.catalog.episodes.length)
 const have = computed(() => props.downloaded.size)
 const percent = computed(() => (total.value === 0 ? 0 : Math.round((have.value / total.value) * 100)))
 const missing = computed(() => total.value - have.value)
+
+/** 当前下载任务（内存态），仅 running 时展示 */
+const running = computed(() => props.job?.running === true)
+const jobDone = computed(() => props.job?.done ?? 0)
+const jobTotal = computed(() => props.job?.total ?? 0)
+const jobFailed = computed(() => props.job?.failed ?? 0)
+const jobPercent = computed(() =>
+  jobTotal.value === 0 ? 0 : Math.round((jobDone.value / jobTotal.value) * 100),
+)
 
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
@@ -114,6 +133,7 @@ watch(
   () => {
     collapsed.value = new Set(groups.value.slice(1).map((group) => group.key))
     rangeInput.value = ''
+    summaryOpen.value = false
   },
   { immediate: true },
 )
@@ -126,7 +146,7 @@ watch(
         <p class="eyebrow">
           {{ catalog.source.siteName }} / {{ catalog.source.novelId }}
         </p>
-        <h2 class="detail-title">{{ catalog.meta.title }}</h2>
+        <h2 class="detail-title serif" :lang="lang">{{ catalog.meta.title }}</h2>
         <div class="head-meta">
           <span class="author">{{ catalog.meta.author.name || '未知作者' }}</span>
           <span class="sep" aria-hidden="true">·</span>
@@ -138,6 +158,16 @@ watch(
       <a class="source-link" :href="catalog.source.url" target="_blank" rel="noreferrer">
         原站 <span aria-hidden="true">↗</span>
       </a>
+    </div>
+
+    <div v-if="summary" class="summary-block">
+      <p class="eyebrow eyebrow--faint">あらすじ</p>
+      <p class="summary-text serif" :class="{ clamped: summaryIsLong && !summaryOpen }" :lang="lang">
+        {{ summary }}
+      </p>
+      <button v-if="summaryIsLong" class="summary-toggle" type="button" @click="summaryOpen = !summaryOpen">
+        {{ summaryOpen ? '收起' : '展开全文' }}
+      </button>
     </div>
 
     <div class="stat-row">
@@ -158,6 +188,15 @@ watch(
       </div>
       <div class="progress-track">
         <span class="progress-fill" :style="{ width: `${percent}%` }" />
+      </div>
+
+      <div v-if="running" class="job-line">
+        <span class="job-dot" aria-hidden="true" />
+        <span class="job-text">
+          本次任务 <strong>{{ jobDone }}</strong> / {{ jobTotal }} 话
+          <template v-if="jobFailed > 0"> · 失败 {{ jobFailed }}</template>
+        </span>
+        <span class="job-percent">{{ jobPercent }}%</span>
       </div>
     </div>
 
@@ -190,7 +229,7 @@ watch(
           <span>补缺失</span>
         </button>
         <button class="pill" type="button" :disabled="!!busy" @click="emit('download', { all: true, overwrite: true })">
-          <span>{{ busy ? '下载中…' : '全部重抓' }}</span>
+          <span>{{ running ? `下载中 ${jobDone}/${jobTotal}` : busy ? '下载中…' : '全部重抓' }}</span>
           <span class="pill__arrow" aria-hidden="true">↗</span>
         </button>
       </div>
@@ -209,7 +248,7 @@ watch(
       <div v-for="group in groups" :key="group.key" class="group">
         <button class="group-head" type="button" @click="toggle(group.key)">
           <span class="group-caret" :class="{ open: !isCollapsed(group.key) }" aria-hidden="true">▸</span>
-          <span class="group-title">{{ group.title }}</span>
+          <span class="group-title serif" :lang="lang">{{ group.title }}</span>
           <span class="group-count">{{ group.done }}/{{ group.episodes.length }}</span>
         </button>
 
@@ -222,7 +261,7 @@ watch(
               @click="emit('open', episode.index)"
             >
               <span class="ep-index">{{ String(episode.index).padStart(3, '0') }}</span>
-              <span class="ep-title">{{ episode.title }}</span>
+              <span class="ep-title serif" :lang="lang">{{ episode.title }}</span>
               <span class="ep-date">{{ formatDate(episode.publishedAt) }}</span>
               <span class="ep-state" :class="{ on: downloaded.has(episode.index) }">
                 {{ downloaded.has(episode.index) ? '已存' : '未存' }}
@@ -294,6 +333,46 @@ watch(
   border-color: var(--blue-dark);
 }
 
+.summary-block {
+  margin-top: 16px;
+  padding: 11px 14px 10px;
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.summary-text {
+  margin-top: 5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12.5px;
+  line-height: 1.78;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.summary-text.clamped {
+  max-height: 7.2em;
+  overflow: hidden;
+  mask-image: linear-gradient(#000 55%, transparent 100%);
+}
+
+.summary-toggle {
+  margin-top: 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue-dark);
+  cursor: pointer;
+  border-bottom: 1px solid rgb(63 113 156 / 30%);
+  transition: border-color 0.2s ease;
+}
+
+.summary-toggle:hover {
+  border-color: var(--blue-dark);
+}
+
 .stat-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -358,6 +437,44 @@ watch(
   border-radius: 999px;
   background: linear-gradient(90deg, var(--blue), var(--blue-dark));
   transition: width 0.5s ease;
+}
+
+.job-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 8px 14px;
+  border: 1px solid rgb(106 158 205 / 32%);
+  border-radius: 999px;
+  background: var(--blue-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--blue-dark);
+}
+
+.job-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex: none;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.job-text strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.job-percent {
+  margin-left: auto;
+  font-weight: 700;
 }
 
 .toolbar {

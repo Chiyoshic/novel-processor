@@ -263,3 +263,90 @@ const content = await fetcher.fetchEpisode('n4703ix', 1)
 ```
 
 新增站点见 `docs/architecture.md` 第 9 节。
+
+---
+
+## 9. 本地数据 API（HTTP 端点）
+
+前端实际访问的是 Vite 中间件暴露的 REST 接口（`server/libraryApi.ts`），
+查询走 SQLite 索引，正文仍从磁盘 JSON 读取。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/sites` | 已支持站点及能力声明 |
+| GET | `/api/stats` | `{ novels, episodes, withContent, trashed }` |
+| GET | `/api/facets` | 分类统计：状态 / 站点 / 题材 / 热门标签及计数 |
+| GET | `/api/library` | 列表查询，返回 `{ items, total, page, limit }` |
+| POST | `/api/sync` | 从磁盘重建索引，返回 `{ novels, episodes, stats }` |
+| POST | `/api/import` | `{ input, site? }` → 抓目录并写盘 + 建索引 |
+| GET | `/api/library/:site/:id` | 完整目录（读 JSON 真源） |
+| POST | `/api/library/:site/:id/refresh` | 重新抓取目录，更新元数据与话列表 |
+| DELETE | `/api/library/:site/:id` | **一级删除**：移入回收站（软删除，不动文件） |
+| DELETE | `/api/library/:site/:id?permanent=1` | **二级删除**：连磁盘文件一起永久删除 |
+| POST | `/api/library/:site/:id/restore` | 从回收站恢复 |
+| POST | `/api/trash/empty` | 清空回收站（永久删除全部） |
+| GET | `/api/library/:site/:id/status` | `{ downloaded, total, indices, job }` —— `job` 为当前下载任务进度 |
+| GET | `/api/library/:site/:id/episodes/:n` | 单话正文 |
+| POST | `/api/library/:site/:id/fetch` | `{ range?, all?, overwrite?, concurrency? }` 批量下载 |
+
+### 下载进度的实时性
+
+`/status` 的 `job` 字段来自服务端内存的任务表：
+
+```json
+{ "total": 10, "done": 6, "failed": 0, "running": true, "startedAt": 1730000000000, "finishedAt": null }
+```
+
+配套两个关键实现，缺一不可：
+
+1. **每抓完一话就 `markContent()` 写索引** —— 否则 `downloaded` 在整批结束前都是旧值，
+   前端轮询拿到的永远是同一个数字，进度条等于不动。
+2. **`job` 单独记录任务级信息** —— 「本次计划多少话、完成多少」是任务属性，DB 里没有，
+   靠 `downloaded` 反推会把「之前就下载过的」算进来。
+
+前端轮询间隔 600ms；整批结束后 `job.running` 置 false，`job` 保留最后一次结果。
+同一作品同时只允许一个下载任务（并发请求返回 409）。
+
+### 二级删除的设计
+
+| 层级 | 操作 | 磁盘影响 | 可撤销 |
+| --- | --- | --- | --- |
+| 一级 | `DELETE`（无 `permanent`） | 不动文件，只写 `novels.deleted_at` | ✅ 回收站可恢复 |
+| 二级 | `DELETE ?permanent=1` | 删除目录 JSON + 整话正文目录 | ❌ 不可恢复 |
+
+软删除后：书架列表与 facets 自动排除，下载接口返回 409，但目录 JSON 仍在磁盘上，
+所以恢复是零成本的。永久删除才会 `rm` 文件。
+
+删除类操作会追加到 `data/audit.log`（JSONL，一行一次），
+因为回收站状态只存在 DB 里、磁盘上没有对应文件，出问题时需要能追溯。
+
+### 错误语义
+
+| 状态码 | 场景 | 前端应如何处理 |
+| --- | --- | --- |
+| 404 | 作品确实不存在 | 提示并返回书架 |
+| 409 | 目录 JSON 缺失但索引有记录 | 提示「重新抓取目录」并提供按钮 |
+| 409 | 下载回收站中的作品 | 提示先恢复 |
+| 500 | 抓取/解析失败 | 显示错误 + 重试 |
+
+> 关键：**读取失败不能渲染成「空」**。回收站页与作品页都区分了「空」与「出错」，
+> 否则服务重启瞬间的请求失败会被误读成「删了但没进回收站」。
+
+### 列表查询参数
+
+| 参数 | 取值 | 说明 |
+| --- | --- | --- |
+| `q` | 任意文本 | 匹配标题或作者 |
+| `status` | `ongoing` / `completed` / `hiatus` / `short` | 连载状态 |
+| `progress` | `none` / `partial` / `complete` | 下载进度：未开始 / 进行中 / 已完整 |
+| `genre` | 题材名 | 大类题材 |
+| `tag` | 标签名 | 精确匹配某个标签 |
+| `site` | 站点 ID | 数据来源 |
+| `sort` | `recent` / `imported` / `title` / `progress` | 排序，默认 `recent` |
+| `trashed` | `1` | 只看回收站（缺省只看正常作品） |
+| `page` / `limit` | 正整数 | 分页，`limit` 上限 200，默认 60 |
+
+`site` 参数在导入时还有校验语义：地址与所选站点不一致时返回 400，
+避免用户在下拉框选了 A 却粘贴 B 站链接。
+
+错误统一为 `{ "error": "可读信息" }` + 对应状态码（400/404/500）。

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Noto+Sans+SC:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Noto+Sans+SC:wght@100..900&family=Noto+Serif+JP:wght@200..900&family=Noto+Serif+SC:wght@200..900&display=swap');
 
 /* ==========================================================================
    设计令牌 —— 沿用 coveone 视觉系统
@@ -19,6 +19,12 @@
   --sans: 'Montserrat', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --display: 'Montserrat', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --mono: 'Montserrat', 'Noto Sans SC', 'PingFang SC', sans-serif;
+
+  /* 正文/标题用衬线，按内容语言切换字形：
+     日文用 Noto Serif JP（汉字字形是日式），中文用 Noto Serif SC。
+     两者都含 CJK 汉字，所以不能靠字体回退自动选，必须由 :lang 显式区分。 */
+  --serif-jp: 'Noto Serif JP', 'Noto Serif SC', 'Hiragino Mincho ProN', serif;
+  --serif-sc: 'Noto Serif SC', 'Noto Serif JP', 'Songti SC', serif;
 
   --radius-lg: 24px;
   --radius-md: 16px;
@@ -111,6 +117,20 @@ input {
 
 .muted {
   color: var(--muted);
+}
+
+/**
+ * 内容衬线：作品标题、章节名、话名、正文、简介都用它。
+ * 语言由元素上的 `lang` 决定（`ja` → 日文字形，其余 → 中文字形）。
+ */
+.serif {
+  font-family: var(--serif-sc);
+  font-optical-sizing: auto;
+  font-synthesis: none;
+}
+
+.serif:lang(ja) {
+  font-family: var(--serif-jp);
 }
 
 /* 胶囊按钮：沿用 coveone 的 pill + 圆形箭头结构 */

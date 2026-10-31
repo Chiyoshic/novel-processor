@@ -6,42 +6,38 @@
  * 挂一个中间件就能直接复用 `NovelLibrary` + `FsEpisodeStore`，
  * 不需要额外进程，也不需要把抓取逻辑复制一份到服务端。
  *
+ * 数据分层：
+ * - JSON 文件 = 真源（目录 + 单话正文，可读可备份）
+ * - SQLite   = 索引（列表 / 搜索 / 统计 / 下载状态），随时可从磁盘重建
+ *
  * 所有业务逻辑都在 `src/lib` 里，这里只做「路由 + 序列化」。
  *
  * 注：对 `src/lib` 的依赖使用**动态 import**，
  * 这样 Vite 的配置文件加载器不会去解析这些源码模块
  * （否则会触发 "config uses features unsupported by configLoader: native" 警告）。
  */
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import type { NovelLibrary } from '../src/lib/library'
 import type { EpisodeStore } from '../src/lib/store'
 import type { NovelRef, NovelRecord } from '../src/lib/types'
-
-interface LibraryEntry {
-  site: string
-  novelId: string
-  title: string
-  author: string
-  status: string
-  statusLabel: string | null
-  episodeCount: number
-  chapterCount: number
-  wordCount: number | null
-  downloaded: number
-  lastEpisodeAt: string | null
-  completedAt: string | null
-  tags: string[]
-}
+import { LibraryDb } from './db'
+import type { NovelQuery, NovelSort, ProgressFilter } from './db'
 
 interface Deps {
   library: NovelLibrary
   store: EpisodeStore
+  db: LibraryDb
+  dataDir: string
   novelsDir: string
   episodesDir: string
   parseRange: (spec: string) => number[]
+  /** 识别输入属于哪个站点；无法识别返回 null */
+  detectSite: (input: string) => string | null
+  /** 从磁盘重建索引 */
+  syncFromDisk: () => Promise<{ novels: number; episodes: number }>
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -49,6 +45,22 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.setHeader('Cache-Control', 'no-store')
   res.end(JSON.stringify(payload))
+}
+
+/**
+ * 删除类操作的审计日志。
+ *
+ * 回收站状态只存在 DB 里（磁盘上没有对应文件），一旦索引被外部清掉就无从追溯。
+ * 这里按行追加 JSONL，便于事后确认「是谁、什么时候」改了状态。
+ */
+async function audit(dataDir: string, action: string, detail: Record<string, unknown>): Promise<void> {
+  const line = `${JSON.stringify({ at: new Date().toISOString(), action, ...detail })}\n`
+  try {
+    await mkdir(dataDir, { recursive: true })
+    await appendFile(join(dataDir, 'audit.log'), line, 'utf8')
+  } catch {
+    // 审计失败不影响主流程
+  }
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -62,64 +74,36 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   }
 }
 
+async function readCatalogFile(novelsDir: string, site: string, novelId: string): Promise<NovelRecord | null> {
+  try {
+    const raw = await readFile(join(novelsDir, site, `${novelId}.json`), 'utf8')
+    return JSON.parse(raw) as NovelRecord
+  } catch {
+    return null
+  }
+}
+
 function createHandler(deps: Deps) {
-  const { library, store, novelsDir, episodesDir, parseRange } = deps
+  const { library, store, db, dataDir, novelsDir, episodesDir, parseRange, detectSite, syncFromDisk } = deps
 
-  async function readCatalog(site: string, novelId: string): Promise<NovelRecord | null> {
-    try {
-      const raw = await readFile(join(novelsDir, site, `${novelId}.json`), 'utf8')
-      return JSON.parse(raw) as NovelRecord
-    } catch {
-      return null
-    }
+  /**
+   * 下载任务的内存进度表。
+   *
+   * 为什么不靠 DB 统计：`has_content` 只有在每话落盘后才有值，
+   * 而「本次任务计划多少话、已完成多少」是任务级信息，DB 里没有。
+   * 进程重启会丢，但那时任务也中止了，正好一致。
+   */
+  interface DownloadJob {
+    total: number
+    done: number
+    failed: number
+    running: boolean
+    startedAt: number
+    finishedAt: number | null
   }
+  const jobs = new Map<string, DownloadJob>()
 
-  async function listLibrary(): Promise<LibraryEntry[]> {
-    let sites: string[] = []
-    try {
-      sites = await readdir(novelsDir)
-    } catch {
-      return []
-    }
-
-    const entries: LibraryEntry[] = []
-    for (const site of sites) {
-      let files: string[] = []
-      try {
-        files = await readdir(join(novelsDir, site))
-      } catch {
-        continue
-      }
-      for (const file of files) {
-        if (!file.endsWith('.json')) continue
-        const record = await readCatalog(site, file.slice(0, -5))
-        if (!record) continue
-        const ref: NovelRef = {
-          site,
-          novelId: record.source.novelId,
-          canonicalUrl: record.source.url,
-          variant: null,
-        }
-        const downloaded = await store.list(ref)
-        entries.push({
-          site,
-          novelId: record.source.novelId,
-          title: record.meta.title,
-          author: record.meta.author.name,
-          status: record.meta.status,
-          statusLabel: record.meta.statusLabel,
-          episodeCount: record.meta.episodeCount ?? record.episodes.length,
-          chapterCount: record.meta.chapterCount ?? record.chapters.length,
-          wordCount: record.meta.wordCount,
-          downloaded: downloaded.length,
-          lastEpisodeAt: record.meta.lastEpisodeAt,
-          completedAt: record.meta.completedAt,
-          tags: record.meta.tags.slice(0, 6),
-        })
-      }
-    }
-    return entries.sort((a, b) => (b.lastEpisodeAt ?? '').localeCompare(a.lastEpisodeAt ?? ''))
-  }
+  const readCatalog = (site: string, novelId: string) => readCatalogFile(novelsDir, site, novelId)
 
   return async function handle(req: IncomingMessage, res: ServerResponse, next: () => void): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost')
@@ -132,23 +116,85 @@ function createHandler(deps: Deps) {
         return
       }
 
-      if (segments.length === 1 && segments[0] === 'library' && method === 'GET') {
-        sendJson(res, 200, await listLibrary())
+      if (segments.length === 1 && segments[0] === 'stats' && method === 'GET') {
+        sendJson(res, 200, db.stats())
         return
       }
 
-      // POST /api/import  { input }
+      // GET /api/facets —— 分类统计（状态 / 站点 / 题材 / 标签）
+      if (segments.length === 1 && segments[0] === 'facets' && method === 'GET') {
+        sendJson(res, 200, db.facets())
+        return
+      }
+
+      // GET /api/library?q=&site=&status=&genre=&tag=&progress=&sort=&page=&limit=&trashed=1
+      if (segments.length === 1 && segments[0] === 'library' && method === 'GET') {
+        const read = (key: string): string | undefined => url.searchParams.get(key)?.trim() || undefined
+        const page = Math.max(1, Number(read('page') ?? 1) || 1)
+        const limit = Math.min(Math.max(Number(read('limit') ?? 60) || 60, 1), 200)
+
+        const query: NovelQuery = {
+          q: read('q'),
+          site: read('site'),
+          status: read('status'),
+          genre: read('genre'),
+          tag: read('tag'),
+          progress: (read('progress') as ProgressFilter | undefined) ?? undefined,
+          sort: (read('sort') as NovelSort | undefined) ?? undefined,
+          trashed: read('trashed') === '1',
+          limit,
+          offset: (page - 1) * limit,
+        }
+
+        const result = db.listNovels(query)
+        sendJson(res, 200, { ...result, page, limit })
+        return
+      }
+
+      // POST /api/trash/empty —— 清空回收站（永久删除所有回收站作品及其文件）
+      if (segments.length === 2 && segments[0] === 'trash' && segments[1] === 'empty' && method === 'POST') {
+        const removed = db.purgeAllTrashed()
+        for (const item of removed) {
+          await rm(join(novelsDir, item.site, `${item.novelId}.json`), { force: true })
+          await rm(join(episodesDir, item.site, item.novelId), { recursive: true, force: true })
+        }
+        await audit(dataDir, 'empty-trash', { removed: removed.map((item) => `${item.site}/${item.novelId}`) })
+        sendJson(res, 200, { removed: removed.length, stats: db.stats() })
+        return
+      }
+
+      // POST /api/sync —— 从磁盘重建索引
+      if (segments.length === 1 && segments[0] === 'sync' && method === 'POST') {
+        const result = await syncFromDisk()
+        sendJson(res, 200, { ...result, stats: db.stats() })
+        return
+      }
+
+      // POST /api/import  { input, site? }
       if (segments.length === 1 && segments[0] === 'import' && method === 'POST') {
         const body = await readBody(req)
         const input = String(body.input ?? '').trim()
+        const site = String(body.site ?? '').trim()
         if (!input) {
           sendJson(res, 400, { error: '缺少 input 参数' })
           return
         }
+
+        const detected = detectSite(input)
+        if (!detected) {
+          sendJson(res, 400, { error: '无法识别该地址所属站点' })
+          return
+        }
+        if (site && site !== detected) {
+          sendJson(res, 400, { error: `该地址属于「${detected}」，与所选数据来源「${site}」不一致` })
+          return
+        }
+
         const record = await library.fetchCatalog(input)
         const target = join(novelsDir, record.source.site, `${record.source.novelId}.json`)
         await mkdir(join(novelsDir, record.source.site), { recursive: true })
         await writeFile(target, `${JSON.stringify(record, null, 2)}\n`, 'utf8')
+        db.upsertCatalog(record)
         sendJson(res, 200, record)
         return
       }
@@ -161,28 +207,88 @@ function createHandler(deps: Deps) {
         if (segments.length === 3 && method === 'GET') {
           const record = await readCatalog(site, novelId)
           if (!record) {
-            sendJson(res, 404, { error: '作品不存在' })
+            // 索引里有记录但文件不在：明确告诉前端「可以重新抓」，而不是笼统的 404
+            const known = db.hasNovel(site, novelId)
+            sendJson(
+              res,
+              known ? 409 : 404,
+              { error: known ? '目录文件缺失，请重新抓取目录' : '作品不存在' },
+            )
             return
           }
           sendJson(res, 200, record)
           return
         }
 
+        // DELETE /api/library/:site/:id            → 一级删除：移入回收站
+        // DELETE /api/library/:site/:id?permanent=1 → 二级删除：连文件一起永久删除
         if (segments.length === 3 && method === 'DELETE') {
+          const permanent = url.searchParams.get('permanent') === '1'
+
+          if (!permanent) {
+            if (!db.trashNovel(site, novelId)) {
+              sendJson(res, 404, { error: '作品不存在或已在回收站' })
+              return
+            }
+            await audit(dataDir, 'trash', { site, novelId })
+            sendJson(res, 200, { ok: true, mode: 'trash' })
+            return
+          }
+
+          if (!db.hasNovel(site, novelId)) {
+            sendJson(res, 404, { error: '作品不存在' })
+            return
+          }
           await rm(join(novelsDir, site, `${novelId}.json`), { force: true })
           await rm(join(episodesDir, site, novelId), { recursive: true, force: true })
+          db.purgeNovel(site, novelId)
+          await audit(dataDir, 'purge', { site, novelId })
+          sendJson(res, 200, { ok: true, mode: 'purge' })
+          return
+        }
+
+        // POST /api/library/:site/:id/restore —— 从回收站恢复
+        if (segments[3] === 'restore' && method === 'POST') {
+          if (!db.restoreNovel(site, novelId)) {
+            sendJson(res, 404, { error: '作品不在回收站中' })
+            return
+          }
+          await audit(dataDir, 'restore', { site, novelId })
           sendJson(res, 200, { ok: true })
+          return
+        }
+
+        // POST /api/library/:site/:id/refresh —— 重新抓取目录（更新元数据与话列表）
+        if (segments[3] === 'refresh' && method === 'POST') {
+          const current = await readCatalog(site, novelId)
+          // 目录 JSON 丢失时回退到索引里记录的原始地址，避免「文件没了就彻底救不回来」
+          const sourceUrl = current?.source.url ?? db.getSourceUrl(site, novelId)
+          if (!sourceUrl) {
+            sendJson(res, 404, { error: '作品不存在' })
+            return
+          }
+          const record = await library.fetchCatalog(sourceUrl)
+          await mkdir(join(novelsDir, site), { recursive: true })
+          await writeFile(
+            join(novelsDir, site, `${novelId}.json`),
+            `${JSON.stringify(record, null, 2)}\n`,
+            'utf8',
+          )
+          const rowId = db.upsertCatalog(record)
+          db.setContentFlags(rowId, await store.list(ref))
+          sendJson(res, 200, record)
           return
         }
 
         // GET /api/library/:site/:id/status
         if (segments[3] === 'status' && method === 'GET') {
           const record = await readCatalog(site, novelId)
-          const downloaded = await store.list(ref)
+          const downloaded = db.contentFlags(site, novelId)
           sendJson(res, 200, {
             downloaded: downloaded.length,
             total: record?.episodes.length ?? 0,
             indices: downloaded,
+            job: jobs.get(`${site}/${novelId}`) ?? null,
           })
           return
         }
@@ -206,6 +312,10 @@ function createHandler(deps: Deps) {
             sendJson(res, 404, { error: '作品不存在，请先导入' })
             return
           }
+          if (db.isTrashed(site, novelId)) {
+            sendJson(res, 409, { error: '作品在回收站中，请先恢复后再下载' })
+            return
+          }
 
           const range = typeof body.range === 'string' && body.range.trim() ? body.range : undefined
           const all = body.all === true
@@ -221,16 +331,52 @@ function createHandler(deps: Deps) {
               return
             }
           } else if (!all) {
-            // 默认：只补缺失的话
-            const have = new Set(await store.list(ref))
+            // 默认：只补缺失的话（用索引查，不扫文件）
+            const have = new Set(db.contentFlags(site, novelId))
             indices = record.episodes.map((episode) => episode.index).filter((i) => !have.has(i))
           }
+
+          const jobKey = `${site}/${novelId}`
+          const existing = jobs.get(jobKey)
+          if (existing?.running) {
+            sendJson(res, 409, { error: '该作品已有下载任务在进行中' })
+            return
+          }
+
+          jobs.set(jobKey, {
+            total: indices?.length ?? record.episodes.length,
+            done: 0,
+            failed: 0,
+            running: true,
+            startedAt: Date.now(),
+            finishedAt: null,
+          })
 
           const result = await library.downloadEpisodes(record.source.url, {
             indices,
             overwrite,
             concurrency,
+            // 每抓完一话立刻写索引：否则 /status 在整批结束前都返回旧值，
+            // 前端轮询拿不到任何变化，进度条等于不动。
+            onEpisode: (content) => {
+              const job = jobs.get(jobKey)
+              if (job) job.done += 1
+              const rowId = db.findId(site, novelId)
+              if (rowId !== null) db.markContent(site, novelId, [content.index])
+            },
           })
+
+          // 用磁盘真实状态回写索引，修正增量标记的偏差（例如中断、手动删文件）
+          const novelRowId = db.findId(site, novelId)
+          if (novelRowId !== null) db.setContentFlags(novelRowId, await store.list(ref))
+
+          const job = jobs.get(jobKey)
+          if (job) {
+            job.running = false
+            job.failed = result.failed.length
+            job.finishedAt = Date.now()
+          }
+
           sendJson(res, 200, {
             total: result.total,
             fetched: result.fetched,
@@ -254,23 +400,88 @@ export function libraryApiPlugin(projectRoot: string): Plugin {
   const dataDir = resolve(projectRoot, 'data')
   const novelsDir = join(dataDir, 'novels')
   const episodesDir = join(dataDir, 'episodes')
+  const dbFile = join(dataDir, 'library.db')
 
   return {
     name: 'novel-library-api',
     async configureServer(server) {
-      const [{ createNovelLibrary }, { parseEpisodeRange }, { FsEpisodeStore }] = await Promise.all([
-        import('../src/lib/library'),
-        import('../src/lib/range'),
-        import('../scripts/fs-store'),
-      ])
+      const [{ createNovelLibrary }, { parseEpisodeRange }, { FsEpisodeStore }, { resolveTarget }] =
+        await Promise.all([
+          import('../src/lib/library'),
+          import('../src/lib/range'),
+          import('../scripts/fs-store'),
+          import('../src/lib/sites/registry'),
+        ])
 
       const store = new FsEpisodeStore(episodesDir)
       const library = createNovelLibrary({ store, concurrency: 4 })
-      const handler = createHandler({ library, store, novelsDir, episodesDir, parseRange: parseEpisodeRange })
+      const db = new LibraryDb(dbFile)
+
+      const detectSite = (input: string): string | null => {
+        try {
+          return resolveTarget(input).adapter.id
+        } catch {
+          return null
+        }
+      }
+
+      const syncFromDisk = async (): Promise<{ novels: number; episodes: number }> => {
+        let novels = 0
+        let episodes = 0
+        let sites: string[] = []
+        try {
+          sites = await readdir(novelsDir)
+        } catch {
+          return { novels, episodes }
+        }
+
+        for (const site of sites) {
+          let files: string[] = []
+          try {
+            files = await readdir(join(novelsDir, site))
+          } catch {
+            continue
+          }
+          for (const file of files) {
+            if (!file.endsWith('.json')) continue
+            const record = await readCatalogFile(novelsDir, site, file.slice(0, -5))
+            if (!record) continue
+            const ref: NovelRef = {
+              site,
+              novelId: record.source.novelId,
+              canonicalUrl: record.source.url,
+              variant: null,
+            }
+            const rowId = db.upsertCatalog(record)
+            const indices = await store.list(ref)
+            db.setContentFlags(rowId, indices)
+            novels += 1
+            episodes += indices.length
+          }
+        }
+        return { novels, episodes }
+      }
+
+      // 启动即对齐索引与磁盘（幂等，几毫秒级）
+      await syncFromDisk()
+
+      const handler = createHandler({
+        library,
+        store,
+        db,
+        dataDir,
+        novelsDir,
+        episodesDir,
+        parseRange: parseEpisodeRange,
+        detectSite,
+        syncFromDisk,
+      })
 
       server.middlewares.use('/api', (req, res, next) => {
         void handler(req, res, next)
       })
+
+      server.httpServer?.on('close', () => db.close())
     },
   }
 }

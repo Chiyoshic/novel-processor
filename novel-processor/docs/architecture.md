@@ -174,6 +174,49 @@ type IndexItem =
 
 理由：小说库是长期累积的数据，**残缺记录 + 明确告警**远比「整本抓取失败」有价值。
 
+### 4.3 存储分层：JSON 真源 + SQLite 索引
+
+引入 SQLite 时最容易犯的错是「把正文塞进数据库」。这里刻意不做：
+
+| 层 | 存什么 | 为什么 |
+| --- | --- | --- |
+| JSON 文件 | 目录、单话正文 | 真源。可读、可 diff、可单独备份；单文件损坏只影响一话 |
+| SQLite | 作品 / 章 / 话 / `has_content` | 索引。列表、搜索、筛选、统计走 SQL，不必扫上百个 JSON |
+
+**关键性质：DB 可从磁盘完整重建。** `syncFromDisk()` 读所有目录 JSON 并 upsert，
+再用 `EpisodeStore.list()` 覆盖 `has_content`，整个过程幂等。
+
+带来的三个好处：
+
+1. **DB 丢了不心疼** —— 删掉 `library.db`，启动时自动重建；
+2. **没有一致性死结** —— 磁盘永远是对的，DB 只是它的投影；
+3. **查询变快** —— 「按状态筛选 + 标题搜索 + 统计已存话数」从 O(文件数) 变成一条 SQL。
+
+同步时机：启动时全量对齐一次（毫秒级）；导入 / 下载后增量更新；
+`POST /api/sync` 可手动强制重建。
+
+> 注：`has_content` 由磁盘真实状态回写（下载后用 `store.list()` 覆盖），
+> 而不是靠「下载了几话」累加——避免中断、手动删文件导致索引漂移。
+
+### 4.4 索引层的表设计（v2）
+
+| 决策 | 做法 | 理由 |
+| --- | --- | --- |
+| 主键 | `novels.id` 整型代理键 + `UNIQUE(site, novel_id)` | 章/话/标签的外键只需一个整数；复合主键字符串重复存储代价更高 |
+| 标签 | 独立 `novel_tags(novel_id, tag)` 关联表 | 原来 tags 存 JSON 字符串，只能 `LIKE '%tag%'`；拆表后可 `GROUP BY` 做分类统计、可按标签精确筛选 |
+| 下载数 | `novels.downloaded_count` 冗余列 + 触发器维护 | 列表页原来每行跑一次 `SELECT COUNT(*)` 子查询（N+1），现在直接读列 |
+| 索引 | `(status, last_episode_at)`、`(site, …)`、`(genre_code)`、`(title)` | 按真实查询建，不做无差别加索引 |
+| 部分索引 | `episodes(novel_id) WHERE has_content = 1` | 「已下载的话」查询只索引需要的行，体积更小 |
+| 外键 | `ON DELETE CASCADE` + `foreign_keys = ON` | 删作品时章/话/标签自动清理，不用写三条 DELETE |
+| PRAGMA | WAL / `synchronous=NORMAL` / `mmap_size=128MB` / `cache_size≈16MB` | 读多写少场景下的常规调优 |
+
+**为什么不用 FTS5 全文检索**：作品量级在千级以内，`LIKE '%kw%'` 全表扫描是微秒级；
+而 FTS5 处理 CJK 需要 `trigram` 分词器，对「無職」这类 2 字查询不友好，
+收益不抵复杂度。等数据量到万级再上，届时也只需替换 `listNovels` 里的一段 SQL。
+
+**Schema 升级不需要迁移脚本**：DB 是投影，`user_version` 不符时直接 `DROP` 重建，
+再由 `syncFromDisk()` 灌回。这是「索引层」定位带来的直接收益。
+
 ---
 
 ## 5. 抓取流程
@@ -291,35 +334,48 @@ API 与 HTML 的冲突（话数不一致）以 API 为准并记录告警，因�
 
 ```
 novel-processor/
-├─ src/lib/                      # 与框架无关的采集内核（Node / 浏览器通用）
-│  ├─ index.ts                   # 公共 API 入口（前端只从这里导入）
-│  ├─ library.ts                 # NovelLibrary 门面（前端首选）
-│  ├─ store.ts                   # EpisodeStore 契约 + MemoryEpisodeStore
-│  ├─ types.ts                   # 领域模型 + 适配器契约 + HTTP 契约
-│  ├─ errors.ts                  # 统一错误码
-│  ├─ time.ts                    # 站点本地时间 → 带偏移 ISO 8601
-│  ├─ text.ts                    # HTML→文本、保留全角空格的归一化
-│  ├─ range.ts                   # 话序号表达式解析（1-20,25）
-│  ├─ concurrency.ts             # mapLimit / forEachLimit（保序并发、限额遍历）
-│  ├─ http.ts                    # FetchHttpClient（并发信号量/节奏/重试/超时）
-│  ├─ pipeline.ts                # NovelFetcher 流水线
-│  └─ sites/
-│     ├─ registry.ts             # 输入路由
-│     └─ syosetu/
-│        ├─ adapter.ts           # 站点实现
-│        ├─ selectors.ts         # 选择器集中管理
-│        └─ api.ts               # 官方 API 富化
+├─ src/
+│  ├─ main.ts                    # 挂载 + 注册路由
+│  ├─ router.ts                  # 三条路由：书架 / 作品 / 阅读
+│  ├─ api.ts                     # 本地数据 API 的类型化客户端
+│  ├─ stores/sites.ts            # 站点列表的一次性缓存
+│  ├─ views/
+│  │  ├─ ShelfView.vue           # 书架：搜索 + 分类筛选 + 卡片网格
+│  │  ├─ NovelView.vue           # 作品：元数据 + 目录 + 下载控制
+│  │  └─ ReaderView.vue          # 阅读：整页正文 + 上下话
+│  ├─ components/
+│  │  ├─ AppHeader.vue / AppSelect.vue / FilterChips.vue
+│  │  ├─ ImportPanel.vue / NovelCard.vue / NovelDetail.vue
+│  │  └─ select-option.ts
+│  └─ lib/                       # 与框架无关的采集内核（Node / 浏览器通用）
+│     ├─ index.ts                # 公共 API 入口（只从这里导入）
+│     ├─ library.ts              # NovelLibrary 门面
+│     ├─ store.ts                # EpisodeStore 契约 + MemoryEpisodeStore
+│     ├─ types.ts                # 领域模型 + 适配器契约 + HTTP 契约
+│     ├─ errors.ts / time.ts / text.ts / range.ts / concurrency.ts
+│     ├─ http.ts                 # FetchHttpClient（并发信号量/节奏/重试/超时）
+│     ├─ pipeline.ts             # NovelFetcher 流水线
+│     └─ sites/
+│        ├─ registry.ts          # 输入路由
+│        └─ syosetu/
+│           ├─ adapter.ts        # 站点实现
+│           ├─ selectors.ts      # 选择器集中管理
+│           └─ api.ts            # 官方 API 富化
 ├─ scripts/                      # 调试壳（删掉不影响库）
 │  ├─ fetch-novel.ts             # CLI：只做参数解析 → 调方法 → 打印
 │  ├─ api-demo.ts                # 可运行的 API 示例 / 冒烟测试
 │  └─ fs-store.ts                # FsEpisodeStore（Node 专用，依赖 node:fs）
+├─ server/                       # 本地服务端（Vite 插件，Node 专用）
+│  ├─ libraryApi.ts              # REST 中间件：路由 + 序列化
+│  └─ db.ts                      # SQLite 索引层（better-sqlite3）
 ├─ docs/
 │  ├─ architecture.md            # 本文
 │  └─ api.md                     # 前端方法参考
 └─ data/
    ├─ novels/<site>/<id>.json            # 作品目录
-   └─ episodes/<site>/<id>/<n>.json      # 单话正文
-      episodes/<site>/<id>/_manifest.json # 批量抓取清单
+   ├─ episodes/<site>/<id>/<n>.json      # 单话正文
+   ├─ episodes/<site>/<id>/_manifest.json # 批量抓取清单
+   └─ library.db                          # SQLite 索引（可删，可重建）
 ```
 
 **分层归属原则**：`src/lib` 里不允许出现 `node:*` 导入，否则前端打包会炸。

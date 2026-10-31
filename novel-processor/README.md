@@ -7,7 +7,22 @@
 - 前端 API 参考：[`docs/api.md`](docs/api.md)
 - 架构设计：[`docs/architecture.md`](docs/architecture.md)
 
-## 前端用法
+## 界面
+
+| 路由 | 页面 | 内容 |
+| --- | --- | --- |
+| `/` | 书架 | 搜索、状态 / 进度 / 题材 / 标签分类筛选、排序、卡片网格 |
+| `/novel/:site/:id` | 作品 | 元数据、章节目录、区间下载与并发控制、更新目录、删除 |
+| `/novel/:site/:id/episodes/:n` | 阅读 | 整页正文、上一话 / 下一话、键盘 ←/→ |
+| `/trash` | 回收站 | 恢复 / 永久删除 / 清空 |
+
+删除分两级：**删除 = 移入回收站**（不动文件，可恢复）；**永久删除**（在回收站内二次确认）才会移除磁盘文件。
+
+```bash
+npm run dev   # 打开 http://localhost:5173
+```
+
+## 前端用法（不经过界面，直接调方法）
 
 所有能力都是 `NovelLibrary` 的方法，浏览器可直接调用（无需 Node）：
 
@@ -51,10 +66,21 @@ npm run fetch -- n4703ix --range 1-20    # 抓指定区间
 输出：
 
 ```
-data/novels/<site>/<id>.json             # 目录：元数据 + 章 + 话
-data/episodes/<site>/<id>/<n>.json       # 单话正文
+data/novels/<site>/<id>.json             # 目录：元数据 + 章 + 话（真源）
+data/episodes/<site>/<id>/<n>.json       # 单话正文（真源）
 data/episodes/<site>/<id>/_manifest.json # 下载清单
+data/library.db                          # SQLite 索引（可随时重建）
 ```
+
+## 数据存储
+
+| 层 | 内容 | 说明 |
+| --- | --- | --- |
+| JSON 文件 | 目录、单话正文 | **真源**。可读、可备份、单文件损坏只影响一话 |
+| SQLite | 作品 / 章 / 话 / 是否有正文 | **索引**。列表、搜索、筛选、统计走 DB，不扫文件 |
+
+两者是「索引 ↔ 真源」关系：DB 可从磁盘完整重建（`POST /api/sync`），
+启动时也会自动对齐一次，所以删掉 `library.db` 不会丢任何数据。
 
 CLI 参数：`-e/--episode`、`-r/--range`、`-a/--all`、`-c/--concurrency`、`--interval`、
 `--overwrite`、`-o/--out`、`--no-enrich`、`--max-pages`、`-q/--quiet`。

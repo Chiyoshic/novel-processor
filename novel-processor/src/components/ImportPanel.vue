@@ -1,60 +1,67 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import type { SiteInfo } from '@/lib'
+import AppSelect from '@/components/AppSelect.vue'
+import type { SelectOption } from '@/components/select-option'
 
 const props = defineProps<{
+  sites: SiteInfo[]
   busy: boolean
+  modelValue: string
 }>()
 
-const emit = defineEmits<{ submit: [input: string] }>()
+const emit = defineEmits<{
+  'update:modelValue': [value: string]
+  submit: [payload: { input: string; site: string }]
+}>()
 
-const value = ref('')
+const input = ref('')
 
-function submit() {
-  const input = value.value.trim()
-  if (!input || props.busy) return
-  emit('submit', input)
-}
+const siteOptions = computed<SelectOption[]>(() =>
+  props.sites.map((site) => ({
+    value: site.id,
+    label: site.name,
+    hint: site.hosts[0] ?? site.id,
+  })),
+)
 
-function useExample() {
-  value.value = 'https://ncode.syosetu.com/n4703ix/'
+const site = computed({
+  get: () => props.modelValue,
+  set: (value: string) => emit('update:modelValue', value),
+})
+
+function submit(): void {
+  const value = input.value.trim()
+  if (!value || props.busy) return
+  emit('submit', { input: value, site: props.modelValue })
 }
 </script>
 
 <template>
   <section class="import-band">
-    <div class="grid-deco" />
     <div class="import-inner section-wrap">
-      <div class="import-copy">
-        <p class="eyebrow">01 / Import</p>
-        <h1>把连载，<em>收进自己的书架</em>。</h1>
-        <p class="import-intro">
-          粘贴作品地址或作品 ID，解析元数据、章节目录与更新时间。
-          正文按话拆分落盘，中断可续传。
-        </p>
-      </div>
-
       <form class="import-form" @submit.prevent="submit">
+        <AppSelect
+          v-model="site"
+          label="数据来源"
+          :options="siteOptions"
+          :disabled="busy || siteOptions.length === 0"
+        />
+
         <div class="input-shell">
-          <span class="input-prefix" aria-hidden="true">URL</span>
           <input
-            v-model="value"
+            v-model="input"
             type="text"
             inputmode="url"
             spellcheck="false"
-            placeholder="https://ncode.syosetu.com/n4703ix/"
+            placeholder="作品地址或作品 ID"
             aria-label="作品地址或作品 ID"
             :disabled="busy"
           />
-          <button class="pill" type="submit" :disabled="busy || !value.trim()">
+          <button class="pill" type="submit" :disabled="busy || !input.trim()">
             <span>{{ busy ? '解析中…' : '添加作品' }}</span>
             <span class="pill__arrow" aria-hidden="true">↗</span>
           </button>
-        </div>
-        <div class="import-hint">
-          <span class="eyebrow eyebrow--faint">Try</span>
-          <button class="link" type="button" @click="useExample">n4703ix</button>
-          <span class="dot-sep">·</span>
-          <span class="muted">支持裸 ID、作品页地址、单话地址</span>
         </div>
       </form>
     </div>
@@ -64,85 +71,37 @@ function useExample() {
 <style scoped>
 .import-band {
   position: relative;
-  padding: 58px 0 62px;
+  padding: 18px 0 20px;
   border-bottom: 1px solid var(--line);
-  overflow: hidden;
-}
-
-.import-band::after {
-  content: '';
-  position: absolute;
-  top: -220px;
-  right: -80px;
-  width: 520px;
-  height: 520px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #dff0fa 0%, rgb(169 205 226 / 55%) 38%, transparent 68%);
-  opacity: 0.7;
-  pointer-events: none;
+  background: rgb(255 255 255 / 46%);
 }
 
 .import-inner {
   position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
-  gap: 56px;
-  align-items: end;
-}
-
-.import-copy h1 {
-  margin-top: 18px;
-  font-size: clamp(38px, 5vw, 62px);
-  line-height: 1.02;
-  max-width: 560px;
-}
-
-.import-copy h1 em {
-  font-style: normal;
-  color: var(--blue);
-}
-
-.import-intro {
-  margin-top: 20px;
-  max-width: 400px;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.8;
 }
 
 .import-form {
-  padding-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .input-shell {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 8px 8px 18px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 4px 4px 18px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgb(255 255 255 / 82%);
-  box-shadow: var(--shadow-soft);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  background: var(--white);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .input-shell:focus-within {
-  background: var(--white);
   border-color: rgb(106 158 205 / 55%);
-  box-shadow: 0 18px 40px rgb(49 83 105 / 12%);
-}
-
-.input-prefix {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--blue-dark);
-  background: var(--blue-soft);
-  border-radius: 6px;
-  padding: 5px 7px;
-  flex: none;
+  box-shadow: 0 10px 26px rgb(49 83 105 / 9%);
 }
 
 .input-shell input {
@@ -159,48 +118,13 @@ function useExample() {
   color: #a9b6bd;
 }
 
-.import-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-  padding-left: 20px;
-  font-size: 11px;
-}
-
-.link {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--blue-dark);
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  border-bottom: 1px solid rgb(63 113 156 / 35%);
-}
-
-.link:hover {
-  border-color: var(--blue-dark);
-}
-
-.dot-sep {
-  color: #c3d0d6;
-}
-
-@media (max-width: 900px) {
-  .import-band {
-    padding: 40px 0 44px;
-  }
-  .import-inner {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-  .import-copy h1 {
-    font-size: clamp(32px, 8vw, 44px);
-  }
+@media (max-width: 720px) {
   .import-form {
-    padding-bottom: 0;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .input-shell {
+    padding-left: 16px;
   }
 }
 
@@ -208,15 +132,11 @@ function useExample() {
   .input-shell {
     flex-wrap: wrap;
     border-radius: 20px;
-    padding: 12px;
-  }
-  .input-prefix {
-    display: none;
+    padding: 10px;
   }
   .input-shell input {
     flex: 1 1 100%;
     padding: 6px 6px 10px;
-    font-size: 13px;
   }
   .input-shell .pill {
     width: 100%;

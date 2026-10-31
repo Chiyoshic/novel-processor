@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import type { SiteInfo } from '@/lib'
-
 defineProps<{
-  sites: SiteInfo[]
   online: boolean
 }>()
 </script>
@@ -17,13 +14,6 @@ defineProps<{
         </svg>
       </span>
       <span class="brand-name">novel<span>processor</span></span>
-    </div>
-
-    <div class="header-meta">
-      <span class="eyebrow eyebrow--faint">Supported</span>
-      <span class="site-list">
-        <span v-for="site in sites" :key="site.id" class="chip">{{ site.name }}</span>
-      </span>
     </div>
 
     <div class="header-state" :class="{ 'is-offline': !online }">
@@ -76,22 +66,11 @@ defineProps<{
   color: var(--blue-dark);
 }
 
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
-}
-
-.site-list {
-  display: flex;
-  gap: 6px;
-}
-
 .header-state {
   display: flex;
   align-items: center;
   gap: 9px;
+  margin-left: auto;
   padding: 8px 15px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -115,11 +94,7 @@ defineProps<{
 }
 
 @media (max-width: 900px) {
-  .header-meta {
-    display: none;
-  }
   .header-state {
-    margin-left: auto;
     font-size: 10px;
   }
 }
