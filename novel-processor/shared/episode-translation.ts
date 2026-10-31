@@ -27,10 +27,10 @@ export interface TranslateEpisodesOptions {
   modelId: number; indices: number[]; overwrite: boolean; requirements: string; reasoningLevel?: ReasoningLevel
 }
 export interface TranslationBatchJob {
-  id: string; running: boolean; stopping: boolean; startedAt: number; finishedAt: number | null
+  id: string; limits: { totalTimeoutMs: number; idleTimeoutMs: number; maxAttempts: number }; running: boolean; stopping: boolean; startedAt: number; finishedAt: number | null
   modelName: string; model: string; apiType: string; reasoningLevel: ReasoningLevel
   indices: number[]; done: number[]; failed: Array<{ index: number; error: string }>; skipped: number[]; cancelled: number[]
-  current: { index: number; title: string; startedAt: number; finishedAt: number | null; lastEventAt: number; events: AiProgressEvent[]; status: 'translating' | 'translated' | 'failed' | 'cancelled'; warnings: string[] } | null
+  current: { referenceEpisodeIndex?: number; index: number; title: string; startedAt: number; finishedAt: number | null; lastEventAt: number; events: AiProgressEvent[]; status: 'translating' | 'translated' | 'failed' | 'cancelled'; warnings: string[] } | null
 }
 export interface EpisodeTranslationsResponse { episodes: EpisodeTranslationStatus[]; job: TranslationBatchJob | null }
 export const episodeTranslationLabels: Record<EpisodeTranslationState, string> = {

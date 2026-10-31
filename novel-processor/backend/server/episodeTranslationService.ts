@@ -1,3 +1,4 @@
+import { DEFAULT_AI_RETRY_POLICY } from '../src/ai'
 import { randomUUID } from 'node:crypto'
 import type { EpisodeStore } from '../src/lib/store'
 import type { NovelRecord } from '../src/lib/types'
@@ -42,7 +43,7 @@ export class EpisodeTranslationService {
     if (!model?.enabled) throw new TranslationBatchError('模型不存在或未启用')
     validateReasoning(model.reasoningDialect, options.reasoningLevel ?? model.reasoningLevel)
     const indices = record.episodes.filter((episode) => selected.has(episode.index)).map((episode) => episode.index)
-    const job: TranslationBatchJob = { id: randomUUID(), running: true, stopping: false, startedAt: Date.now(), finishedAt: null, modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, indices, done: [], failed: [], skipped: [], cancelled: [], current: null }
+    const job: TranslationBatchJob = { id: randomUUID(), limits: { totalTimeoutMs: DEFAULT_AI_RETRY_POLICY.totalTimeoutMs, idleTimeoutMs: DEFAULT_AI_RETRY_POLICY.requestTimeoutMs, maxAttempts: DEFAULT_AI_RETRY_POLICY.maxAttempts }, running: true, stopping: false, startedAt: Date.now(), finishedAt: null, modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, indices, done: [], failed: [], skipped: [], cancelled: [], current: null }
     const controller = new AbortController()
     this.locks.add(key)
     this.controllers.set(key, controller)
@@ -90,7 +91,7 @@ export class EpisodeTranslationService {
           job.current!.lastEventAt = event.at
           const events = job.current!.events
           const last = events.at(-1)
-          if (event.type === 'delta' && last?.type === 'delta' && last.attempt === event.attempt) { last.text = (last.text + event.text).slice(-120000) }
+          if (event.type === 'delta' && last?.type === 'delta' && last.attempt === event.attempt) { last.characters = (last.characters ?? last.text.length) + event.text.length; last.text = (last.text + event.text).slice(-120000) }
           else events.push(event)
         }
         try {
@@ -108,6 +109,7 @@ export class EpisodeTranslationService {
           if (!baseline) throw new Error('翻译材料不存在，请先完成初始化')
           const requirements = [baseline.request.requirements, options.requirements].filter(Boolean).join('\n')
           const reference = await this.styleReference(record, index)
+          job.current.referenceEpisodeIndex = reference?.index
           controller.signal.throwIfAborted()
           const response = await translateEpisode(record, content, baseline.result, model, requirements, options.reasoningLevel, controller.signal, progress, reference)
           controller.signal.throwIfAborted()

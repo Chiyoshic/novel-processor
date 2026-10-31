@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { createLibraryApiHandler, type LibraryApiDeps } from '../server/libraryApi'
 import { LibraryDb } from '../server/db'
 import { FsEpisodeStore } from '../src/storage/fs-store'
 import { EpisodeTranslationService } from '../server/episodeTranslationService'
@@ -180,4 +181,31 @@ test('SQLite 重启保留译文状态并收敛中断任务，清理作品同时�
     db.purgeNovel(ref.site, ref.novelId)
     assert.deepEqual(db.listEpisodeTranslations(ref.site, ref.novelId), [])
   } finally { db.close(); await rm(dir, { recursive: true, force: true }) }
+})
+
+
+test('第二步 HTTP API 启动、轮询、读取译文及字段错误处理', async () => {
+  await fixture(async ({ db, store, model, dir }) => {
+    await mkdir(join(dir, 'novels', ref.site), { recursive: true })
+    await writeFile(join(dir, 'novels', ref.site, `${ref.novelId}.json`), JSON.stringify(record))
+    const handler = createLibraryApiHandler({ db, store, novelsDir: join(dir, 'novels') } as unknown as LibraryApiDeps)
+    const server = createServer((req, res) => { void handler(req, res, () => { res.statusCode = 404; res.end() }) })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/library/${ref.site}/${ref.novelId}`
+    try {
+      const invalid = await fetch(`${base}/translation/episodes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...options(model.id), indices: [999] }) })
+      assert.equal(invalid.status, 400)
+      const response = await fetch(`${base}/translation/episodes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options(model.id, [1, 2])) })
+      assert.equal(response.status, 202)
+      let snapshot = await response.json() as { job: TranslationBatchJob }
+      const until = Date.now() + 5000
+      while (snapshot.job.running && Date.now() < until) { await sleep(10); snapshot = await (await fetch(`${base}/translation/episodes`)).json() as typeof snapshot }
+      assert.equal(snapshot.job.running, false); assert.deepEqual(snapshot.job.done, [1, 2])
+      const content = await (await fetch(`${base}/episodes/1`)).json() as EpisodeContent
+      assert.equal(content.translation?.body, output(1).translation.body)
+      assert.equal(content.translation?.stale, false)
+      const stop = await fetch(`${base}/translation/episodes/stop`, { method: 'POST' })
+      assert.equal(stop.status, 200)
+    } finally { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())) }
+  }, (data, res) => stream(res, output((data.episode as { index: number }).index)))
 })

@@ -232,6 +232,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           if (method === 'POST' && segments.length === 5) {
             const record = await readCatalog(site, novelId)
             if (!record) { sendJson(res, 404, { error: '作品不存在' }); return }
+            if (jobs.get(`${site}/${novelId}`)?.running) { sendJson(res, 409, { error: '本书正在下载正文，请下载完成后再翻译' }); return }
             const options = await readBody(req) as unknown as TranslateEpisodesOptions
             episodeTranslations.start(record, options)
             sendJson(res, 202, episodeTranslations.snapshot(site, novelId)); return
@@ -248,6 +249,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
         }
         if (method === 'POST') {
           const key = JSON.stringify([site, novelId])
+          if (jobs.get(`${site}/${novelId}`)?.running) { sendJson(res, 409, { error: '本书正在下载正文，请下载完成后再初始化' }); return }
           if (initializationJobs.has(key)) { sendJson(res, 409, { error: '这本书的翻译概要正在生成，请勿重复提交' }); return }
           initializationJobs.add(key)
           const cancellation = requestCancellation(req, res)
@@ -369,6 +371,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
 
       // POST /api/sync —— 从磁盘重建索引
       if (segments.length === 1 && segments[0] === 'sync' && method === 'POST') {
+        if (initializationJobs.size) { sendJson(res, 409, { error: '翻译任务执行中，完成后再同步数据' }); return }
         const result = await syncFromDisk()
         sendJson(res, 200, { ...result, stats: db.stats() })
         return

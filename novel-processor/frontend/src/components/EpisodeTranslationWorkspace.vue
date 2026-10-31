@@ -43,6 +43,9 @@ const task = computed<TranslationTaskState | null>(() => {
   const current = job.value?.current
   if (!current || !job.value) return null
   const value = newTranslationTask({ modelName: job.value.modelName, model: job.value.model, apiType: job.value.apiType, reasoningLevel: job.value.reasoningLevel, episodeCount: 1 })
+  value.limits = job.value.limits
+  value.maxAttempts = job.value.limits.maxAttempts
+  value.referenceEpisodeIndex = current.referenceEpisodeIndex
   value.startedAt = current.startedAt
   value.lastEventAt = current.startedAt
   value.logs = [{ at: current.startedAt, message: `第 ${current.index} 话 · ${current.title}` }]

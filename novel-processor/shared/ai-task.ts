@@ -2,7 +2,7 @@
 export type AiProgressData =
   | { type: 'attempt'; attempt: number; maxAttempts: number }
   | { type: 'activity'; attempt: number; stage: 'thinking' }
-  | { type: 'delta'; attempt: number; text: string }
+  | { type: 'delta'; attempt: number; text: string; characters?: number }
   | { type: 'validating'; attempt: number }
   | { type: 'validated'; attempt: number; jsonRepaired: boolean }
   | { type: 'retry'; attempt: number; nextAttempt: number; delayMs: number; reason: string; kind: string; status?: number }

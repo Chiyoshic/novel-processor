@@ -4,6 +4,7 @@ export type TaskStatus = 'connecting' | 'reading' | 'preparing' | 'waiting' | 't
 export interface TaskAttempt { number: number; startedAt: number; finishedAt?: number; firstTokenAt?: number; characters: number; output: string; status: string }
 export interface TranslationTaskState {
   status: TaskStatus; startedAt: number; finishedAt?: number; lastEventAt: number
+  referenceEpisodeIndex?: number
   modelName: string; model: string; apiType: string; reasoningLevel: string; episodeCount: number
   limits?: { totalTimeoutMs: number; idleTimeoutMs: number }
   maxAttempts: number; attempts: TaskAttempt[]; retryAt?: number; jsonRepaired: boolean
@@ -43,7 +44,7 @@ export function applyTranslationEvent(task: TranslationTaskState, event: Transla
     case 'delta':
       if (!current || current.number !== event.attempt) return
       if (!current.firstTokenAt) { current.firstTokenAt = event.at; log('已收到首段正文输出') }
-      current.characters += event.text.length
+      current.characters += event.characters ?? event.text.length
       // Keep rendering/memory bounded without changing the full backend output used for validation.
       current.output = (current.output + event.text).slice(-120000)
       current.status = '接收输出'; task.status = 'streaming'; break
