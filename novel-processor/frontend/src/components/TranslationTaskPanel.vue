@@ -22,6 +22,15 @@ const retryIn = computed(() => Math.max(0, Math.ceil(((props.task.retryAt ?? 0) 
 const received = computed(() => props.task.attempts.reduce((sum, item) => sum + item.characters, 0))
 function duration(ms: number): string { const seconds = Math.max(0, Math.floor(ms / 1000)); return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` }
 function time(value?: number): string { return value ? new Date(value).toLocaleTimeString('zh-CN', { hour12: false }) : '—' }
+function exportDiagnostics(): void {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(props.task, null, 2)], { type: 'application/json;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `translation-task-${props.task.startedAt}.json`
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 let scrollTimer: ReturnType<typeof setTimeout> | undefined
 watch([() => attempt.value?.output, follow, selected], () => {
   if (scrollTimer) return
@@ -35,7 +44,7 @@ onUnmounted(() => { if (scrollTimer) clearTimeout(scrollTimer) })
     <header class="task-head"><div><p class="task-eyebrow">初始化任务</p><h3 id="task-title"><span class="status-dot" :class="{ pulse: active }" aria-hidden="true" />{{ taskStatusLabels[task.status] }}<span v-if="task.status === 'retrying'" class="retry-countdown">{{ retryIn }} 秒</span></h3></div><button v-if="active" class="pill pill--ghost pill--small" type="button" @click="$emit('cancel')">停止任务</button></header>
     <p class="model-line">{{ task.modelName }} <span>{{ task.model }}</span></p>
     <div class="task-metrics"><div><span>总耗时</span><strong>{{ duration(elapsed) }}</strong></div><div><span>调用次数</span><strong>{{ task.attempts.length }}<small> / {{ task.maxAttempts }}</small></strong></div><div><span>已重试</span><strong>{{ Math.max(0, task.attempts.length - 1) }}<small> 次</small></strong></div><div><span>已接收字符</span><strong>{{ received.toLocaleString() }}</strong></div></div>
-    <dl class="task-info"><div><dt>任务开始</dt><dd>{{ time(task.startedAt) }}</dd></div><div><dt>最近活动</dt><dd>{{ time(task.lastEventAt) }}</dd></div><div><dt>请求协议</dt><dd>{{ task.apiType === 'responses' ? 'Responses' : 'Chat Completions' }}</dd></div><div><dt>材料 / 思考等级</dt><dd>{{ task.episodeCount }} 话 · {{ task.reasoningLevel }}</dd></div><div v-if="task.finishedAt"><dt>任务结束</dt><dd>{{ time(task.finishedAt) }}</dd></div></dl>
+    <dl class="task-info"><div><dt>任务开始</dt><dd>{{ time(task.startedAt) }}</dd></div><div><dt>最近活动</dt><dd>{{ time(task.lastEventAt) }}</dd></div><div><dt>请求协议</dt><dd>{{ task.apiType === 'responses' ? 'Responses' : 'Chat Completions' }}</dd></div><div><dt>材料 / 思考等级</dt><dd>{{ task.episodeCount }} 话 · {{ task.reasoningLevel }}</dd></div><div v-if="task.limits"><dt>总任务时限</dt><dd>{{ task.limits.totalTimeoutMs / 60000 }} 分钟</dd></div><div v-if="task.limits"><dt>流式空闲超时</dt><dd>{{ task.limits.idleTimeoutMs / 1000 }} 秒无上游事件</dd></div><div v-if="task.finishedAt"><dt>任务结束</dt><dd>{{ time(task.finishedAt) }}</dd></div></dl>
     <div class="stream-shell">
       <header class="stream-head"><h4>实时输出 <span class="live-label">{{ active ? 'LIVE' : '任务已结束' }}</span></h4><label><input v-model="follow" type="checkbox" />自动跟随</label></header>
       <div v-if="task.attempts.length" class="attempt-tabs" aria-label="调用记录"><button v-for="(item, index) in task.attempts" :key="item.number" type="button" :class="{ selected: selected === index }" :aria-pressed="selected === index" @click="selected = index">第 {{ item.number }} 次调用<span>{{ item.status }}</span></button></div>
@@ -43,6 +52,7 @@ onUnmounted(() => { if (scrollTimer) clearTimeout(scrollTimer) })
       <div ref="outputBox" class="stream-output" tabindex="0" aria-label="模型实时正文输出" :aria-busy="active"><pre v-if="attempt?.output">{{ attempt.characters > attempt.output.length ? '…仅展示最近 120,000 字符，完整输出在后端校验。\n\n' : '' }}{{ attempt.output }}</pre><p v-else class="output-placeholder">{{ task.status === 'thinking' ? '模型正在思考，尚未返回正文…' : task.status === 'retrying' ? '等待下一次调用…' : active ? '等待模型返回正文，输出将实时显示在这里…' : '本次调用未收到正文输出。' }}</p></div>
       <footer class="stream-foot"><span>原始输出预览 · 通过校验后保存</span><span v-if="task.jsonRepaired">JSON 已修复</span></footer>
     </div>
+    <div class="diagnostic-actions"><button class="pill pill--ghost pill--small" type="button" @click="exportDiagnostics">导出任务诊断</button></div>
     <details class="task-log" open><summary>任务记录 <span>{{ task.logs.length }}</span></summary><ol><li v-for="(entry, index) in task.logs" :key="index" :class="{ warning: entry.warning }"><time>{{ time(entry.at) }}</time><span>{{ entry.message }}</span></li></ol></details>
   </section>
 </template>
@@ -62,7 +72,7 @@ h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; font-size: 1
 .attempt-info { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 18px 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .stream-output { height: 320px; overflow: auto; overscroll-behavior: contain; padding: 18px; scrollbar-gutter: stable; }.stream-output pre { margin: 0; color: var(--ink-soft); font: 12px/1.85 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }.output-placeholder { color: var(--muted); font-size: 13px; line-height: 1.9; }
 .stream-foot { padding: 11px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
-.task-log { margin-top: 18px; }summary { cursor: pointer; font-size: 13px; color: var(--ink); padding: 8px 0; }summary > span { color: var(--muted); margin-left: 6px; }ol { list-style: none; padding: 0; margin: 6px 0 0; max-height: 210px; overflow: auto; }li { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 12px; padding: 6px 0; font-size: 12px; line-height: 1.8; }li time { color: var(--muted); font-variant-numeric: tabular-nums; }li.warning span { color: var(--blue-dark); }
+.diagnostic-actions { display: flex; justify-content: flex-end; margin-top: 14px; }.task-log { margin-top: 12px; }summary { cursor: pointer; font-size: 13px; color: var(--ink); padding: 8px 0; }summary > span { color: var(--muted); margin-left: 6px; }ol { list-style: none; padding: 0; margin: 6px 0 0; max-height: 210px; overflow: auto; }li { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 12px; padding: 6px 0; font-size: 12px; line-height: 1.8; }li time { color: var(--muted); font-variant-numeric: tabular-nums; }li.warning span { color: var(--blue-dark); }
 @keyframes task-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 @media (max-width: 1000px) { .task-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.task-info { grid-template-columns: 1fr; } }

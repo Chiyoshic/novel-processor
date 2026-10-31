@@ -5,7 +5,7 @@ import type { ResponseCreateParamsNonStreaming, ResponseCreateParamsStreaming } 
 import type { AiApiType, AiModelConfig } from '../server/db'
 import { validateReasoning, type ReasoningLevel } from '../../shared/ai'
 import { normalizeModelOutput } from './ai-compat'
-import { AiGenerationError, AiOutputError, type AiFailureKind } from './ai-errors'
+import { AiGenerationError, AiOutputError, type AiFailureKind, type AiTimeoutDetail } from './ai-errors'
 import { MAX_MODEL_JSON_BYTES, parseModelJson } from './ai-json'
 import type { AiProgressData, AiProgressEvent } from '../../shared/ai-task'
 
@@ -20,13 +20,20 @@ export interface AiGenerateInput {
 }
 export interface AiGenerateResult { text: string; model: string; apiType: AiApiType; attempts: number }
 export interface AiJsonResult<T> extends AiGenerateResult { value: T; jsonRepaired: boolean }
-export interface AiRetryPolicy { maxAttempts: number; totalTimeoutMs: number; requestTimeoutMs: number; baseDelayMs: number; maxDelayMs: number }
+export interface AiRetryPolicy {
+  maxAttempts: number
+  totalTimeoutMs: number
+  /** Non-streaming request limit; streaming first-event/idle limit, refreshed by upstream events. */
+  requestTimeoutMs: number
+  baseDelayMs: number
+  maxDelayMs: number
+}
 export const DEFAULT_AI_RETRY_POLICY: Readonly<AiRetryPolicy> = Object.freeze({
-  maxAttempts: 3, totalTimeoutMs: 600000, requestTimeoutMs: 180000, baseDelayMs: 1000, maxDelayMs: 30000,
+  maxAttempts: 3, totalTimeoutMs: 3600000, requestTimeoutMs: 180000, baseDelayMs: 1000, maxDelayMs: 30000,
 })
 export const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1'
 const REASONING_KEYS = ['thinking', 'reasoning_effort', 'enable_thinking', 'thinking_budget', 'reasoning']
-const OUTPUT_RETRY_INSTRUCTION = '\n上一次输出未通过完整性、JSON 格式或业务字段校验。请依据相同原文材料重新生成完整合法 JSON，严格遵守指定结构和原文证据要求，不输出解释或代码围栏，不补造缺失事实。'
+const OUTPUT_RETRY_INSTRUCTION = '\n上一次输出未通过完整性、JSON 格式或业务字段校验。请依据相同原文材料重新生成完整合法 JSON，严格遵守指定 JSON 结构；章节来源只填写 ID，不输出原句引用，不输出解释或代码围栏，不补造缺失事实。'
 
 export function reasoningParameters(config: Pick<AiModelConfig, 'apiType' | 'reasoningDialect' | 'reasoningLevel'>, override?: ReasoningLevel): Record<string, unknown> {
   const level = override ?? config.reasoningLevel
@@ -82,7 +89,7 @@ export class AiModelClient {
     for (const key of ['totalTimeoutMs', 'requestTimeoutMs', 'baseDelayMs', 'maxDelayMs'] as const) {
       if (!Number.isSafeInteger(this.retry[key]) || this.retry[key] <= 0) throw new Error('重试超时和间隔须为正整数毫秒')
     }
-    if (this.retry.totalTimeoutMs > 600000) throw new Error('模型调用总时长不得超过 10 分钟')
+    if (this.retry.totalTimeoutMs > 86400000) throw new Error('模型调用总时长不得超过 24 小时')
     if (config.provider === 'opencode' && !config.apiKey) throw new Error('OpenCode 需要 API Key')
     const baseURL = normalizeBaseUrl(config.baseUrl || (config.provider === 'opencode' ? OPENCODE_BASE_URL : 'https://api.openai.com/v1'))
     if (config.provider === 'opencode' || new URL(baseURL).hostname === 'opencode.ai') this.retry.requestTimeoutMs = Math.min(350000, this.retry.requestTimeoutMs)
@@ -101,7 +108,7 @@ export class AiModelClient {
       try { return { value: validate(parsed.value), jsonRepaired: parsed.repaired } }
       catch (error) {
         if (error instanceof AiOutputError) throw error
-        throw new AiOutputError('模型 JSON 未通过业务字段或证据验证')
+        throw new AiOutputError('模型 JSON 未通过字段格式验证')
       }
     }, true)
   }
@@ -117,46 +124,57 @@ export class AiModelClient {
     const expiresAt = Date.now() + this.retry.totalTimeoutMs
     let attempts = 0
     let outputRetry = false
+    const abortError = () => input.signal?.aborted ? new AiGenerationError('cancelled', attempts) : new AiGenerationError('timeout', attempts, undefined, { phase: 'total', limitMs: this.retry.totalTimeoutMs })
     try {
       for (;;) {
-        if (signal.aborted) throw new AiGenerationError(input.signal?.aborted ? 'cancelled' : 'timeout', attempts)
+        if (signal.aborted) throw abortError()
         attempts++
         input.onProgress?.({ type: 'attempt', attempt: attempts, maxAttempts: this.retry.maxAttempts, at: Date.now() })
         const attemptDeadline = new AbortController()
         const attemptTimeout = Math.min(this.retry.requestTimeoutMs, Math.max(1, expiresAt - Date.now()))
-        const attemptTimer = setTimeout(() => attemptDeadline.abort(), attemptTimeout)
-        attemptTimer.unref()
+        let attemptTimer: ReturnType<typeof setTimeout> | undefined
+        let hasStreamActivity = false
+        const armAttemptDeadline = () => {
+          if (attemptTimer) clearTimeout(attemptTimer)
+          if (signal.aborted || attemptDeadline.signal.aborted) return
+          attemptTimer = setTimeout(() => attemptDeadline.abort(), Math.min(this.retry.requestTimeoutMs, Math.max(1, expiresAt - Date.now())))
+          attemptTimer.unref()
+        }
+        armAttemptDeadline()
+        const onStreamActivity = () => { hasStreamActivity = true; armAttemptDeadline() }
         try {
           const actualInput = structured && outputRetry ? { ...input, system: (input.system ?? '') + OUTPUT_RETRY_INSTRUCTION } : input
-          const response = await this.generateOnce(actualInput, maxTokens, AbortSignal.any([signal, attemptDeadline.signal]), attemptTimeout, attempts)
+          const response = await this.generateOnce(actualInput, maxTokens, AbortSignal.any([signal, attemptDeadline.signal]), attemptTimeout, attempts, onStreamActivity)
           clearTimeout(attemptTimer)
           if (attemptDeadline.signal.aborted) throw new OpenAI.APIConnectionTimeoutError()
           if (structured) input.onProgress?.({ type: 'validating', attempt: attempts, at: Date.now() })
           const decoded = decode(response.text)
           if (structured) input.onProgress?.({ type: 'validated', attempt: attempts, jsonRepaired: decoded.jsonRepaired, at: Date.now() })
-          if (signal.aborted) throw new AiGenerationError(input.signal?.aborted ? 'cancelled' : 'timeout', attempts)
+          if (signal.aborted) throw abortError()
           return { ...response, ...decoded, attempts }
         } catch (error) {
           clearTimeout(attemptTimer)
-          if (signal.aborted) throw new AiGenerationError(input.signal?.aborted ? 'cancelled' : 'timeout', attempts)
+          if (signal.aborted) throw abortError()
           const failure = classifyAiFailure(attemptDeadline.signal.aborted ? new OpenAI.APIConnectionTimeoutError() : error)
-          if (!failure.retryable || attempts >= this.retry.maxAttempts) throw new AiGenerationError(failure.kind, attempts, failure.status)
+          const timeoutDetail: AiTimeoutDetail | undefined = failure.kind === 'timeout' ? { phase: input.onProgress ? (hasStreamActivity ? 'stream-idle' : 'first-event') : 'request', limitMs: this.retry.requestTimeoutMs } : undefined
+          const reportedFailure = new AiGenerationError(failure.kind, attempts, failure.status, timeoutDetail)
+          if (!failure.retryable || attempts >= this.retry.maxAttempts) throw reportedFailure
           if (failure.kind === 'invalid-output') outputRetry = true
           const backoff = Math.min(this.retry.maxDelayMs, this.retry.baseDelayMs * 2 ** (attempts - 1))
           const serverDelay = retryAfterMs(error)
           // Never retry sooner than Retry-After, or wait beyond the local budget.
-          if (serverDelay !== undefined && serverDelay > this.retry.maxDelayMs) throw new AiGenerationError(failure.kind, attempts, failure.status)
+          if (serverDelay !== undefined && serverDelay > this.retry.maxDelayMs) throw reportedFailure
           const delay = serverDelay ?? Math.round(backoff * (0.75 + Math.random() * 0.25))
-          if (Date.now() + delay >= expiresAt) throw new AiGenerationError('timeout', attempts)
-          input.onProgress?.({ type: 'retry', attempt: attempts, nextAttempt: attempts + 1, delayMs: delay, reason: new AiGenerationError(failure.kind, attempts, failure.status).message, kind: failure.kind, ...(failure.status ? { status: failure.status } : {}), at: Date.now() })
+          if (Date.now() + delay >= expiresAt) throw new AiGenerationError('timeout', attempts, undefined, { phase: 'total', limitMs: this.retry.totalTimeoutMs })
+          input.onProgress?.({ type: 'retry', attempt: attempts, nextAttempt: attempts + 1, delayMs: delay, reason: reportedFailure.message, kind: failure.kind, ...(failure.status ? { status: failure.status } : {}), at: Date.now() })
           try { await sleep(delay, undefined, { signal }) }
-          catch { throw new AiGenerationError(input.signal?.aborted ? 'cancelled' : 'timeout', attempts) }
+          catch { throw abortError() }
         }
       }
     } finally { clearTimeout(timer) }
   }
 
-  private async generateStreaming(input: AiGenerateInput, extra: Record<string, unknown>, sampling: Record<string, unknown>, reasoning: Record<string, unknown>, maxTokens: number, signal: AbortSignal, timeout: number, attempt: number): Promise<{ text: string; model: string }> {
+  private async generateStreaming(input: AiGenerateInput, extra: Record<string, unknown>, sampling: Record<string, unknown>, reasoning: Record<string, unknown>, maxTokens: number, signal: AbortSignal, timeout: number, attempt: number, onStreamActivity: () => void): Promise<{ text: string; model: string }> {
     let text = ''
     let bytes = 0
     let model = this.config.model
@@ -176,6 +194,7 @@ export class AiModelClient {
       let finish: string | null = null
       try {
         for await (const chunk of stream) {
+          onStreamActivity()
           model = chunk.model || model
           const choice = chunk.choices?.find((item) => item.index === 0)
           if (!choice) continue
@@ -192,6 +211,7 @@ export class AiModelClient {
       let completed = false
       try {
         for await (const event of stream) {
+          onStreamActivity()
           if (event.type === 'response.output_text.delta') append(event.delta)
           else if (event.type === 'response.reasoning_summary_text.delta' || event.type === 'response.reasoning_text.delta') markThinking()
           else if (event.type === 'response.refusal.delta' || event.type === 'response.refusal.done') throw new AiOutputError('模型拒答', { retryable: false, refusal: true })
@@ -210,7 +230,7 @@ export class AiModelClient {
     return { text, model }
   }
 
-  private async generateOnce(input: AiGenerateInput, maxTokens: number, signal: AbortSignal, timeout: number, attempt: number): Promise<Omit<AiGenerateResult, 'attempts'>> {
+  private async generateOnce(input: AiGenerateInput, maxTokens: number, signal: AbortSignal, timeout: number, attempt: number, onStreamActivity: () => void): Promise<Omit<AiGenerateResult, 'attempts'>> {
     const extra: Record<string, unknown> = { ...this.config.extraBody }
     for (const key of ['model', 'messages', 'input', 'instructions', 'stream', 'max_tokens', 'max_completion_tokens', 'max_output_tokens']) delete extra[key]
     const level = input.reasoningLevel ?? this.config.reasoningLevel
@@ -220,7 +240,7 @@ export class AiModelClient {
     let text: string
     let model: string
     if (input.onProgress) {
-      const result = await this.generateStreaming(input, extra, sampling, reasoning, maxTokens, signal, timeout, attempt)
+      const result = await this.generateStreaming(input, extra, sampling, reasoning, maxTokens, signal, timeout, attempt, onStreamActivity)
       text = result.text
       model = result.model
     } else if (this.config.apiType === 'chat-completions') {

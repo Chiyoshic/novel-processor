@@ -21,7 +21,8 @@ export interface TranslationBrief {
     identity_zh: string
     naming_notes_zh: string
     speech_style_zh: string
-    evidence: Array<{ episode_index: number; quote: string }>
+    /** Source episode IDs only. quote remains optional for legacy saved results. */
+    evidence: Array<{ episode_index: number; quote?: string }>
     confidence: 'high' | 'medium' | 'low'
   }>
   style: { overall_zh: string; viewpoint_zh: string; narration_zh: string; dialogue_zh: string; rhythm_zh: string; register_zh: string }
@@ -57,7 +58,7 @@ export interface TranslationInitialization {
 
 export type TranslationTaskEvent = import('./ai-task').AiProgressEvent | ({ at: number } & (
   | { type: 'heartbeat' }
-  | { type: 'started'; modelName: string; model: string; apiType: string; reasoningLevel: ReasoningLevel; episodeCount: number }
+  | { type: 'started'; limits?: { totalTimeoutMs: number; idleTimeoutMs: number }; modelName: string; model: string; apiType: string; reasoningLevel: ReasoningLevel; episodeCount: number }
   | { type: 'phase'; phase: 'reading' | 'preparing' | 'saving' }
   | { type: 'completed'; saved: TranslationInitialization }
   | { type: 'error'; message: string; attempts: number }

@@ -5,6 +5,7 @@ export interface TaskAttempt { number: number; startedAt: number; finishedAt?: n
 export interface TranslationTaskState {
   status: TaskStatus; startedAt: number; finishedAt?: number; lastEventAt: number
   modelName: string; model: string; apiType: string; reasoningLevel: string; episodeCount: number
+  limits?: { totalTimeoutMs: number; idleTimeoutMs: number }
   maxAttempts: number; attempts: TaskAttempt[]; retryAt?: number; jsonRepaired: boolean
   logs: Array<{ at: number; message: string; warning?: boolean }>; error?: string
 }
@@ -31,7 +32,7 @@ export function applyTranslationEvent(task: TranslationTaskState, event: Transla
   switch (event.type) {
     case 'heartbeat': return
     case 'started':
-      Object.assign(task, { modelName: event.modelName, model: event.model, apiType: event.apiType, reasoningLevel: event.reasoningLevel, episodeCount: event.episodeCount })
+      Object.assign(task, { limits: event.limits, modelName: event.modelName, model: event.model, apiType: event.apiType, reasoningLevel: event.reasoningLevel, episodeCount: event.episodeCount })
       log(`任务已连接 · ${event.episodeCount} 话材料`); break
     case 'phase': task.status = event.phase; log(taskStatusLabels[event.phase]); break
     case 'attempt':
@@ -46,11 +47,11 @@ export function applyTranslationEvent(task: TranslationTaskState, event: Transla
       // Keep rendering/memory bounded without changing the full backend output used for validation.
       current.output = (current.output + event.text).slice(-120000)
       current.status = '接收输出'; task.status = 'streaming'; break
-    case 'validating': task.status = 'validating'; if (current) current.status = '校验中'; log('正文接收完成，校验 JSON 和角色原文依据'); break
+    case 'validating': task.status = 'validating'; if (current) current.status = '校验中'; log('正文接收完成，检查 JSON 格式与字段类型'); break
     case 'validated':
       task.jsonRepaired = event.jsonRepaired
       if (current) { current.finishedAt = event.at; current.status = '校验通过' }
-      log(event.jsonRepaired ? 'JSON 已本地修复并通过校验' : 'JSON 与原文依据校验通过'); break
+      log(event.jsonRepaired ? 'JSON 已本地修复并通过校验' : 'JSON 格式与字段类型检查通过'); break
     case 'retry':
       task.status = 'retrying'; task.retryAt = event.at + event.delayMs
       if (current) { current.finishedAt = event.at; current.status = '失败 · 待重试' }

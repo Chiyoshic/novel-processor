@@ -8,7 +8,7 @@ import type { NovelRef, NovelRecord } from '../src/lib/types'
 import { LibraryDb } from './db'
 import type { NovelQuery, NovelSort, ProgressFilter, UpsertAiModelInput } from './db'
 import { initializeTranslation, parseTranslationOptions, selectInitializationEpisodes } from '../src/translation'
-import { createAiModelClient, normalizeBaseUrl, OPENCODE_BASE_URL } from '../src/ai'
+import { createAiModelClient, normalizeBaseUrl, OPENCODE_BASE_URL, DEFAULT_AI_RETRY_POLICY } from '../src/ai'
 import { AiGenerationError } from '../src/ai-errors'
 import type { TranslationTaskEvent } from '../../shared/translation'
 import { validateReasoning, type ReasoningDialect, type ReasoningLevel, type ResponseProfile } from '../../shared/ai'
@@ -252,7 +252,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             if (streaming) {
               res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' })
               res.flushHeaders()
-              emit({ type: 'started', at: Date.now(), modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, episodeCount: selected.length })
+              emit({ type: 'started', at: Date.now(), limits: { totalTimeoutMs: DEFAULT_AI_RETRY_POLICY.totalTimeoutMs, idleTimeoutMs: DEFAULT_AI_RETRY_POLICY.requestTimeoutMs }, modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, episodeCount: selected.length })
               emit({ type: 'phase', phase: 'reading', at: Date.now() })
               heartbeat = setInterval(() => emit({ type: 'heartbeat', at: Date.now() }), 10000)
               heartbeat.unref()

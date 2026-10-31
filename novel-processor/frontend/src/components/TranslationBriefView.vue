@@ -43,7 +43,7 @@ const updated = computed(() => new Date(props.saved.updatedAt).toLocaleString('z
           <p v-if="character.aliases.length" class="metadata">别名：{{ character.aliases.join('、') }}</p>
           <p class="identity">{{ character.identity_zh }}</p>
           <dl><template v-if="character.naming_notes_zh"><dt>译名依据</dt><dd>{{ character.naming_notes_zh }}</dd></template><template v-if="character.speech_style_zh"><dt>说话风格</dt><dd>{{ character.speech_style_zh }}</dd></template></dl>
-          <details v-if="character.evidence.length" class="evidence"><summary>查看原文依据 · {{ character.evidence.length }}</summary><blockquote v-for="(evidence, i) in character.evidence" :key="i"><p>{{ evidence.quote }}</p><cite>第 {{ evidence.episode_index }} 话</cite></blockquote></details>
+          <div v-if="character.evidence.length" class="chapter-references"><p class="metadata">来源章节</p><div class="reference-links"><RouterLink v-for="episodeIndex in [...new Set(character.evidence.map((item) => item.episode_index))]" :key="episodeIndex" class="reference-link" :to="{ name: 'reader', params: { site: saved.site, novelId: saved.novelId, index: episodeIndex } }" target="_blank" rel="noopener noreferrer">第 {{ episodeIndex }} 话 ↗</RouterLink></div></div>
         </article>
       </div>
       <p v-else class="empty">所选材料中暂无可确定的角色。</p>
@@ -87,9 +87,10 @@ dt { font-size: 12px; font-weight: 600; color: var(--muted); margin: 12px 0 4px;
 dd { margin: 0; white-space: pre-wrap; }
 .style-item dt { margin-top: 0; }
 summary { cursor: pointer; color: var(--blue-dark); font-size: 13px; line-height: 1.8; padding: 12px 0; }
-.evidence { margin-top: 12px; border-top: 1px solid var(--line); }
-blockquote { border-left: 3px solid var(--blue-line); margin: 8px 0; padding-left: 12px; font-size: 13px; line-height: 1.9; }
-cite { font-size: 12px; color: var(--muted); font-style: normal; }
+.chapter-references { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.reference-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.reference-link { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 12px; border-radius: 999px; color: var(--blue-dark); background: var(--blue-soft); font-size: 12px; line-height: 1.6; }
+.reference-link:hover { text-decoration: underline; }.reference-link:focus-visible { outline: 2px solid var(--blue-dark); outline-offset: 2px; }
 .terms { border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
 .term { padding: 16px 20px; background: var(--paper); }
 .term + .term { border-top: 1px solid var(--line); }

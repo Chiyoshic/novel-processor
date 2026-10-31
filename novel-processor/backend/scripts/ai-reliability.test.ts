@@ -9,7 +9,7 @@ import { AiModelClient, DEFAULT_AI_RETRY_POLICY, retryAfterMs, type AiRetryPolic
 import { AiGenerationError, AiOutputError } from '../src/ai-errors'
 import { MAX_MODEL_JSON_BYTES, parseModelJson } from '../src/ai-json'
 import { normalizeModelOutput } from '../src/ai-compat'
-import { initializeTranslation, validateTranslationBrief } from '../src/translation'
+import { INITIALIZATION_SYSTEM_PROMPT, PROMPT_VERSION, buildInitializationInput, initializeTranslation, validateTranslationBrief } from '../src/translation'
 import type { AiModelConfig } from '../server/db'
 import type { EpisodeContent, NovelRecord } from '../src/lib/types'
 import type { TranslationBrief } from '../../shared/translation'
@@ -37,15 +37,16 @@ async function fixture(run: (url: string, requests: Array<Record<string, unknown
 function validateOk(value: unknown): { ok: true } { assert.deepEqual(value, { ok: true }); return value as { ok: true } }
 const brief: TranslationBrief = {
   schema_version: '1.0', language: 'zh-CN', novel: { original_title: '原作', chinese_title: '测试书名', plot_summary_zh: '莉娜出发旅行。' },
-  characters: [{ original_name: 'リナ', chinese_name: '莉娜', aliases: [], identity_zh: '旅行者', naming_notes_zh: '音译', speech_style_zh: '简短', evidence: [{ episode_index: 1, quote: 'リナは旅に出た。' }], confidence: 'high' }],
+  characters: [{ original_name: 'リナ', chinese_name: '莉娜', aliases: [], identity_zh: '旅行者', naming_notes_zh: '音译', speech_style_zh: '简短', evidence: [{ episode_index: 1 }], confidence: 'high' }],
   style: { overall_zh: '轻快', viewpoint_zh: '第三人称', narration_zh: '平实', dialogue_zh: '简洁', rhythm_zh: '短句', register_zh: '自然' }, terminology: [], worldbuilding_zh: [], address_rules_zh: [], translation_rules_zh: ['保持人名统一'], unresolved_questions_zh: [],
 }
 const record = { meta: { title: '原作', author: { name: '作者' }, summary: '简介', genre: '小说', tags: [] }, chapters: [], episodes: [{ index: 1 }] } as unknown as NovelRecord
 const contents = [{ index: 1, title: '第一话', preface: '', body: 'リナは旅に出た。', bodyHtml: '', afterword: '', totalEpisodes: 1 }] satisfies EpisodeContent[]
 
-test('默认三次总尝试、十分钟总时长，配置有界', () => {
+test('默认三次总尝试、六十分钟总时长，配置有界', () => {
   assert.equal(DEFAULT_AI_RETRY_POLICY.maxAttempts, 3)
-  assert.equal(DEFAULT_AI_RETRY_POLICY.totalTimeoutMs, 600000)
+  assert.equal(DEFAULT_AI_RETRY_POLICY.totalTimeoutMs, 3600000)
+  assert.throws(() => new AiModelClient(config('http://127.0.0.1'), { totalTimeoutMs: 86400001 }))
   assert.throws(() => new AiModelClient(config('http://127.0.0.1'), { maxAttempts: 6 }))
 })
 test('修补围栏、BOM、逗号、注释、单引号和未引号键', () => {
@@ -98,13 +99,13 @@ test('网络、格式和业务失败共享请求帽，失败不返回可存储�
     assert.equal(requests.length, 3)
   }, (n, _req, res) => n === 1 ? json(res, 500, { error: {} }) : json(res, 200, chat(n === 2 ? '{"ok":' : '{"wrong":true}')))
 })
-test('证据失败用原始材料重生成，不回传失败文本诱导伪造证据', async () => {
+test('字段类型错误用原始材料重生成，不回传失败文本', async () => {
   await fixture(async (url, requests) => {
     const result = await new AiModelClient(config(url), policy).generateJson({ system: '原始规则', prompt: '原始材料' }, (v) => validateTranslationBrief(v, record, contents))
     assert.equal(result.attempts, 2); assert.equal(result.value.characters[0]?.chinese_name, '莉娜')
     const messages = requests[1]!.messages as Array<{ content: string }>
-    assert.match(messages[0]!.content, /原始规则/); assert.match(messages[0]!.content, /原文证据/); assert.equal(messages[1]!.content, '原始材料')
-  }, (n, _req, res) => json(res, 200, chat(JSON.stringify(n === 1 ? { ...brief, characters: [{ ...brief.characters[0], evidence: [{ episode_index: 1, quote: '伪造证据' }] }] } : brief))))
+    assert.match(messages[0]!.content, /原始规则/); assert.match(messages[0]!.content, /JSON 结构/); assert.equal(messages[1]!.content, '原始材料')
+  }, (n, _req, res) => json(res, 200, chat(JSON.stringify(n === 1 ? { ...brief, characters: [{ ...brief.characters[0], evidence: [{ episode_index: 'wrong-type' }] }] } : brief))))
 })
 test('Chat length 即使文本是完整 JSON 也不消费；拒答不重试', async () => {
   await fixture(async (url, requests) => {
@@ -194,7 +195,7 @@ test('Responses 流式正文增量与 completed 必须同时满足，incomplete 
     { type: n === 1 ? 'response.incomplete' : 'response.completed', response: response('{"ok":true}', n === 1 ? 'incomplete' : 'completed'), sequence_number: 2 },
   ]))
 })
-test('流式首包后悬挂仍受单次超时约束，取消立即停止且不重试', async () => {
+test('流式首包后悬挂受空闲超时约束，取消立即停止且不重试', async () => {
   await fixture(async (url, requests) => {
     await assert.rejects(new AiModelClient(config(url), { ...policy, maxAttempts: 1, requestTimeoutMs: 70 }).generate({ prompt: 'offline', onProgress: () => {} }), (error: unknown) => error instanceof AiGenerationError && error.kind === 'timeout')
     assert.equal(requests.length, 1)
@@ -204,4 +205,78 @@ test('流式首包后悬挂仍受单次超时约束，取消立即停止且不�
     await assert.rejects(new AiModelClient(config(url), policy).generate({ prompt: 'offline', signal: controller.signal, onProgress: (event) => { if (event.type === 'delta') controller.abort() } }), (error: unknown) => error instanceof AiGenerationError && error.kind === 'cancelled')
     assert.equal(requests.length, 1)
   }, (_n, _req, res) => { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write(`data: ${JSON.stringify(chatDelta('partial'))}\n\n`) })
+})
+
+test('Chat/Responses 持续流式活动跨越旧单次上限仍可完成，思考事件同样刷新空闲计时', async () => {
+  for (const apiType of ['chat-completions', 'responses'] as const) {
+    await fixture(async (url, requests) => {
+      const started = Date.now()
+      const result = await new AiModelClient(config(url, apiType), { ...policy, requestTimeoutMs: 120 }).generateJson({ prompt: 'offline', onProgress: () => {} }, validateOk)
+      assert.equal(result.attempts, 1)
+      assert.equal(requests.length, 1)
+      assert.ok(Date.now() - started > 120)
+      assert.deepEqual(result.value, { ok: true })
+    }, async (_n, _req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.flushHeaders()
+      for (let i = 0; i < 6; i++) {
+        await sleep(40)
+        if (res.destroyed) return
+        const event = apiType === 'chat-completions'
+          ? { ...chatDelta(''), choices: [{ index: 0, delta: { reasoning_content: 'thinking' }, finish_reason: null }] }
+          : { type: 'response.reasoning_summary_text.delta', delta: 'thinking', sequence_number: i }
+        res.write(`data: ${JSON.stringify(event)}\n\n`)
+      }
+      const ending = apiType === 'chat-completions' ? [chatDelta('{"ok":true}', 'stop')] : [
+        { type: 'response.output_text.delta', delta: '{"ok":true}', sequence_number: 7 },
+        { type: 'response.completed', response: response('{"ok":true}'), sequence_number: 8 },
+      ]
+      for (const event of ending) res.write(`data: ${JSON.stringify(event)}\n\n`)
+      res.end('data: [DONE]\n\n')
+    })
+  }
+})
+test('持续输出仍受总任务时限约束；首事件等待与流式空闲超时原因区分', async () => {
+  await fixture(async (url, requests) => {
+    await assert.rejects(new AiModelClient(config(url), { ...policy, totalTimeoutMs: 240, requestTimeoutMs: 100 }).generate({ prompt: 'offline', onProgress: () => {} }), (error: unknown) => error instanceof AiGenerationError && error.kind === 'timeout' && error.message.includes('总任务时限已到'))
+    assert.equal(requests.length, 1)
+  }, async (_n, _req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.flushHeaders()
+    for (let i = 0; i < 20; i++) { if (res.destroyed) return; res.write(`data: ${JSON.stringify(chatDelta('x'))}\n\n`); await sleep(30) }
+  })
+  for (const sendFirst of [false, true]) {
+    await fixture(async (url) => {
+      await assert.rejects(new AiModelClient(config(url), { ...policy, maxAttempts: 1, requestTimeoutMs: 70 }).generate({ prompt: 'offline', onProgress: () => {} }), (error: unknown) => error instanceof AiGenerationError && error.kind === 'timeout' && error.message.includes(sendFirst ? '流式响应连续无活动超时' : '等待首个流式事件超时'))
+    }, (_n, _req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.flushHeaders()
+      if (sendFirst) res.write(`data: ${JSON.stringify(chatDelta('partial'))}\n\n`)
+    })
+  }
+})
+
+
+test('v3 提示词只精选关键术语，限制数量与备注，不要求词汇百科', () => {
+  assert.equal(PROMPT_VERSION, 'translation-initialization-v3')
+  assert.match(INITIALIZATION_SYSTEM_PROMPT, /通常 0–8 项，最多 12 项/)
+  assert.match(INITIALIZATION_SYSTEM_PROMPT, /30 个汉字以内/)
+  assert.match(INITIALIZATION_SYSTEM_PROMPT, /排除普通名词/)
+  assert.match(INITIALIZATION_SYSTEM_PROMPT, /没有关键术语就返回 \[\]/)
+  const input = buildInitializationInput(record, contents, { modelId: 1, chapterCount: 1, includeSummary: true, includePreface: false, requirements: '' }, config('http://127.0.0.1'))
+  assert.equal(input.request.promptVersion, PROMPT_VERSION)
+  assert.match(input.prompt, /通常0–8项、最多12项/)
+})
+
+
+test('章节引用只检查字段类型，不匹配引用文本、人物姓名或来源范围', () => {
+  const value = structuredClone(brief)
+  value.characters[0]!.original_name = '模型识别的姓名变体'
+  value.characters[0]!.evidence = [{ episode_index: 9999 }]
+  assert.equal(validateTranslationBrief(value, record, contents).characters[0]!.evidence[0]!.episode_index, 9999)
+  const legacy = structuredClone(brief)
+  legacy.characters[0]!.evidence = [{ episode_index: 1, quote: '并非原文逐字引用' }]
+  assert.doesNotThrow(() => validateTranslationBrief(legacy, record, contents))
+  legacy.characters[0]!.evidence = []
+  assert.doesNotThrow(() => validateTranslationBrief(legacy, record, contents))
+  assert.match(INITIALIZATION_SYSTEM_PROMPT, /不要输出 quote/)
+  const input = buildInitializationInput(record, contents, { modelId: 1, chapterCount: 1, includeSummary: true, includePreface: false, requirements: '' }, config('http://127.0.0.1'))
+  assert.ok(!input.prompt.includes('"quote"'))
 })
