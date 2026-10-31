@@ -161,17 +161,22 @@ export function assembleStructure(items: IndexItem[]): { chapters: Chapter[]; ep
 }
 
 export class NovelFetcher {
-  private readonly adapters: SiteAdapter[]
+  private readonly adapterList: SiteAdapter[]
   private readonly http: HttpClient
 
   constructor(options: { adapters?: SiteAdapter[]; http?: HttpClient } = {}) {
-    this.adapters = options.adapters ?? builtinAdapters
+    this.adapterList = options.adapters ?? builtinAdapters
     this.http = options.http ?? new FetchHttpClient()
+  }
+
+  /** 已注册的适配器列表。 */
+  get adapters(): readonly SiteAdapter[] {
+    return this.adapterList
   }
 
   /** 解析输入，得到适配器与作品引用。 */
   resolve(input: string): { adapter: SiteAdapter; ref: NovelRef } {
-    return resolveTarget(input, this.adapters)
+    return resolveTarget(input, this.adapterList)
   }
 
   /** 抓取作品目录，产出完整记录。 */
@@ -288,7 +293,7 @@ export class NovelFetcher {
     input: string,
     index: number,
     options: FetchNovelOptions = {},
-  ): Promise<EpisodeContent & { ref: NovelRef }> {
+  ): Promise<EpisodeContent> {
     const { adapter, ref } = this.resolve(input)
     return this.fetchOne(adapter, ref, index, options)
   }

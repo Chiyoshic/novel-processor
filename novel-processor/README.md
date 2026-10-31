@@ -1,68 +1,71 @@
 # novel-processor
 
-个人小说库处理工具。把多个小说站点的作品归一化成统一 JSON，供后续整理、检索、导出使用。
+个人小说库处理工具。把多个小说站点的作品归一化成统一 JSON，供前端整理、检索、导出。
 
 当前支持：**小説家になろう（syosetu）**
 
-- 架构说明：[`docs/architecture.md`](docs/architecture.md)
+- 前端 API 参考：[`docs/api.md`](docs/api.md)
+- 架构设计：[`docs/architecture.md`](docs/architecture.md)
 
-## 快速开始
+## 前端用法
+
+所有能力都是 `NovelLibrary` 的方法，浏览器可直接调用（无需 Node）：
+
+```ts
+import { createNovelLibrary } from '@/lib'
+
+const library = createNovelLibrary({ concurrency: 4 })
+
+const catalog = await library.fetchCatalog('https://ncode.syosetu.com/n4703ix/')
+const result = await library.downloadEpisodes('n4703ix', {
+  range: '1-20',
+  onProgress: (p) => console.log(`${p.page}/${p.totalPages}`),
+})
+```
+
+| 方法 | 说明 |
+| --- | --- |
+| `sites` / `detectSite(input)` | 站点能力自省 |
+| `resolve(input)` | 输入 → 规范引用 |
+| `fetchCatalog(input, opts?)` | 抓目录（元数据 + 章 + 话） |
+| `fetchEpisode(input, index, opts?)` | 抓单话正文 |
+| `downloadEpisodes(input, opts?)` | 批量下载（自动续传） |
+| `listDownloaded` / `readEpisode` / `getManifest` | 本地库读取 |
+| `getDownloadStatus(input, catalog)` | 下载进度 |
+
+浏览器直连站点会被 CORS 拦下，开发期用已配好的 Vite 代理 + `rewriteUrl`，
+详见 [`docs/api.md`](docs/api.md) 第 4 节。
+
+## 调试用 CLI
+
+CLI 只是这些方法的一层壳，用于本地验证与批量灌数据，删除它不影响库。
 
 ```bash
 npm install
 
-# 1) 抓取作品目录（可用作品 ID 或完整 URL）
-npm run fetch -- n4703ix
-npm run fetch -- https://ncode.syosetu.com/n4703ix/
-
-# 2) 抓取正文
-npm run fetch -- n4703ix --all            # 全部话
-npm run fetch -- n4703ix --range 1-20     # 指定区间
-npm run fetch -- n4703ix --episode 5      # 单话
-
-# 已抓过的正文默认跳过（断点续传），强制重抓加 --overwrite
-npm run fetch -- n4703ix --all --overwrite
+npm run fetch -- n4703ix                 # 抓目录
+npm run fetch -- n4703ix --all -c 4      # 抓全部正文（4 并发）
+npm run fetch -- n4703ix --range 1-20    # 抓指定区间
 ```
 
 输出：
 
 ```
-data/novels/syosetu/n4703ix.json             # 目录：元数据 + 章 + 话
-data/episodes/syosetu/n4703ix/1.json         # 第 1 话正文
-data/episodes/syosetu/n4703ix/159.json       # 第 159 话正文
-data/episodes/syosetu/n4703ix/_manifest.json # 本次抓取清单（成功/跳过/失败）
+data/novels/<site>/<id>.json             # 目录：元数据 + 章 + 话
+data/episodes/<site>/<id>/<n>.json       # 单话正文
+data/episodes/<site>/<id>/_manifest.json # 下载清单
 ```
 
-## 命令参数
+CLI 参数：`-e/--episode`、`-r/--range`、`-a/--all`、`-c/--concurrency`、`--interval`、
+`--overwrite`、`-o/--out`、`--no-enrich`、`--max-pages`、`-q/--quiet`。
 
-| 参数 | 说明 |
-| --- | --- |
-| `-e, --episode <spec>` | 抓指定话，支持 `5`、`1-5`、`1,3,7-9` |
-| `-r, --range <spec>` | 同 `--episode` |
-| `-a, --all` | 抓全部话（自动先抓目录确定总话数） |
-| `--overwrite` | 已存在的正文也重抓（默认跳过） |
-| `-o, --out <path>` | 自定义输出路径（目录模式为文件，正文模式为目录） |
-| `--no-enrich` | 跳过官方 API 富化 |
-| `--max-pages <n>` | 目录页抓取上限（默认 50） |
-| `-q, --quiet` | 不打印进度 |
+## 并发
 
-> 批量抓取为**串行 + 800ms 间隔**，159 话约需 3 分钟。单话失败不会中断整批，失败项会写入
-> `_manifest.json` 的 `failed[]`，重跑同一条命令即可自动补齐（已成功的不重复抓取）。
+并发数与请求节奏是独立约束：只提并发不放宽间隔，吞吐不会提升。
+实测 20 话：`c=1` 28.4s → `c=4` 6.6s → `c=8` 5.7s，**建议 4**。
 
-## 产出结构
-
-```jsonc
-{
-  "source": { "site": "syosetu", "novelId": "n4703ix", "url": "…" },
-  "meta": { "title": "…", "author": {…}, "summary": "…",
-            "status": "completed", "completedAt": "2024-09-13",
-            "episodeCount": 159, "chapterCount": 8, "wordCount": 387175,
-            "firstPublishedAt": "…+09:00", "lastEpisodeAt": "…+09:00" },
-  "chapters": [{ "index": 1, "title": "第一章　幼少期", "episodeStart": 1, "episodeEnd": 13 }],
-  "episodes": [{ "index": 1, "title": "…", "url": "…", "chapterIndex": 1,
-                 "publishedAt": "…+09:00", "revisedAt": null }],
-  "fetch": { "pagesFetched": 2, "warnings": [] }
-}
+```ts
+createNovelLibrary({ concurrency: 4, minIntervalMs: 200 })
 ```
 
 ## 开发
@@ -70,7 +73,8 @@ data/episodes/syosetu/n4703ix/_manifest.json # 本次抓取清单（成功/跳�
 ```bash
 npm run dev        # 前端（Vue 3 + Vite）
 npm run typecheck  # 类型检查
-npm run build      # 构建前端
+npm run build      # 构建
+npx tsx scripts/api-demo.ts n4703ix   # 可运行的 API 示例 / 冒烟测试
 ```
 
 采集内核在 `src/lib/`，与 Vue 无关；新增站点见架构文档第 9 节。

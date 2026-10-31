@@ -26,24 +26,40 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ 消费层                                                    │
-│   CLI (scripts/fetch-novel.ts)   Vue UI   HTTP API(待建)   │
+│   Vue 组件   调试 CLI (scripts/fetch-novel.ts)  HTTP API   │
 └───────────────────────────┬──────────────────────────────┘
-                            │ NovelRecord / EpisodeContent
+                            │ 方法调用（fetchCatalog / downloadEpisodes …）
 ┌───────────────────────────▼──────────────────────────────┐
-│ 流水线层  NovelFetcher (src/lib/pipeline.ts)              │
-│   翻页 → 合并有序条目流 → 编号/归章 → 元数据富化 → 校验告警  │
-└───────────────────────────┬──────────────────────────────┘
-                            │ SiteAdapter 契约
-┌───────────────────────────▼──────────────────────────────┐
+│ 门面层  NovelLibrary (src/lib/library.ts)                 │
+│   站点自省 · 目录 · 单话 · 批量下载 · 本地库读取            │
+│   组合 Fetcher + EpisodeStore，对外只暴露方法               │
+└──────────────┬───────────────────────────┬───────────────┘
+               │                           │
+┌──────────────▼─────────────┐  ┌──────────▼───────────────┐
+│ 流水线层 NovelFetcher       │  │ 存储层 EpisodeStore       │
+│  翻页→合并→编号→富化→校验   │  │  内存 / 文件系统 / 自定义  │
+└──────────────┬─────────────┘  └──────────────────────────┘
+               │ SiteAdapter 契约
+┌──────────────▼───────────────────────────────────────────┐
 │ 适配层                                                    │
 │   registry.ts ──► syosetu/ (adapter + selectors + api)    │
 │                   kakuyomu/ (预留)                        │
 └───────────────────────────┬──────────────────────────────┘
-                            │ HttpClient（限速 / 重试 / 超时）
+                            │ HttpClient（并发/节奏/重试/超时）
 ┌───────────────────────────▼──────────────────────────────┐
 │ IO 层  FetchHttpClient (src/lib/http.ts)                  │
+│        并发信号量 · 请求节奏 · 重试 · 超时                   │
 └──────────────────────────────────────────────────────────┘
 ```
+
+### 2.1 门面层的意义
+
+`NovelLibrary` 不是简单的转发器，它解决了三个跨层问题：
+
+1. **存储与采集解耦**：流水线只产出数据，落盘交给 `EpisodeStore`。
+   同一套下载逻辑，Node 用 `FsEpisodeStore`，浏览器用 `MemoryEpisodeStore`，后端可换成数据库。
+2. **组合而非继承**：UI 只依赖一个实例，不需要同时持有 Fetcher、HttpClient、Store 三件套。
+3. **取消与进度统一**：所有长任务方法都接受 `AbortSignal` 与 `onProgress`，签名一致。
 
 ---
 
@@ -204,10 +220,10 @@ API 与 HTML 的冲突（话数不一致）以 API 为准并记录告警，因�
 
 | 决策 | 取值 | 理由 |
 | --- | --- | --- |
-| 并发 | 串行（1） | `HttpClient` 本身是全局串行限速队列，并发不提升吞吐，只会放大风控风险 |
+| 并发 | 可配，默认 1 | 由 `HttpClient` 的信号量统一收敛；默认串行是对站点最友好的取值 |
 | 失败处理 | 单话失败不中断整批 | 159 话里挂 1 话不应丢弃其余 158 话的成果 |
 | 落盘时机 | 每话完成立即回调 `onEpisode` | 中途 Ctrl-C 或断网不丢已抓内容 |
-| 续传 | `shouldSkip(index)` 由调用方判定 | 内核不碰文件系统；CLI 用「文件已存在」实现断点续传 |
+| 续传 | `shouldSkip(index)` 由调用方判定 | 内核不碰存储；门面层用 `EpisodeStore.has()` 实现断点续传 |
 
 失败项收集到 `EpisodeBatchResult.failed[]` 并写入 `_manifest.json`，
 重跑同一条命令即可自动补齐——已成功的话因文件存在被跳过，不会重复请求。
@@ -216,6 +232,33 @@ API 与 HTML 的冲突（话数不一致）以 API 为准并记录告警，因�
 1. 断点续传的粒度就是「话」，文件即状态；
 2. 后续做翻译/清洗时可按文件并行、可增量；
 3. 单文件损坏只影响一话。
+
+### 5.4 并发模型
+
+并发是**两个独立约束**，必须分开建模，否则会出现「把并发调到 8 却毫无提速」的情况：
+
+| 参数 | 语义 | 作用位置 |
+| --- | --- | --- |
+| `concurrency` | 同时在途的请求数上限 | `HttpClient` 信号量 + 流水线任务池 |
+| `minIntervalMs` | 相邻两次请求**发起**的最小间隔 | `HttpClient.pace()` |
+
+吞吐上限 = `min(concurrency / 平均延迟, 1 / minIntervalMs)`。
+串行 800ms 时后者封顶 1.25 req/s；把并发提到 4 而节奏仍是 800ms，吞吐不会变——
+必须同时把节奏放宽到 200ms，才能得到约 5 req/s。
+
+**实现要点**
+
+1. **信号量用「名额转交」而非计数增减**：`release()` 有等待者时直接把名额交给它，
+   不先减再加，避免唤醒与归还之间的竞态。
+2. **节奏用「先占时间槽再等待」**：同步计算 `nextStartAt` 后才 `await`，
+   保证多并发下同一时间槽不会被重复分配。
+3. **任务池保序**：目录页并发抓取后必须按页序合并，否则章会错位。
+   `mapLimit` 按输入下标写回结果，天然保序；正文批量用 `forEachLimit`（无序，因为按话落盘）。
+4. **两处并发数必须一致**：流水线并发 4 而 HTTP 层并发 1，任务会在 IO 层排队，
+   表现为「设了并发但没变快」。CLI 用同一个 `--concurrency` 同时配置两者。
+
+**调参建议**：4 并发性价比最高（实测 4.3×）；8 并发仅 5.0×，站点侧排队成为瓶颈，
+且更容易触发风控。被限流时先降并发，再用 `--interval` 单独收紧节奏。
 
 ---
 
@@ -233,7 +276,7 @@ API 与 HTML 的冲突（话数不一致）以 API 为准并记录告警，因�
 
 ## 7. 可靠性与合规
 
-1. **限速**：同一 `HttpClient` 内请求串行排队，相邻请求间隔 ≥800ms（可配）。
+1. **限速**：并发数与请求节奏双约束（见 5.4）。默认串行 + 800ms 间隔，可按需放宽。
 2. **重试**：仅对 408/425/429/5xx 与网络异常重试，指数退避（800ms × 2ⁿ + 抖动），最多 3 次。
 3. **超时**：单请求 20s，超时视为可重试错误。
 4. **UA 标识**：使用带工具名的 User-Agent，不伪装成普通浏览器做高频请求。
@@ -249,11 +292,16 @@ API 与 HTML 的冲突（话数不一致）以 API 为准并记录告警，因�
 ```
 novel-processor/
 ├─ src/lib/                      # 与框架无关的采集内核（Node / 浏览器通用）
+│  ├─ index.ts                   # 公共 API 入口（前端只从这里导入）
+│  ├─ library.ts                 # NovelLibrary 门面（前端首选）
+│  ├─ store.ts                   # EpisodeStore 契约 + MemoryEpisodeStore
 │  ├─ types.ts                   # 领域模型 + 适配器契约 + HTTP 契约
 │  ├─ errors.ts                  # 统一错误码
 │  ├─ time.ts                    # 站点本地时间 → 带偏移 ISO 8601
 │  ├─ text.ts                    # HTML→文本、保留全角空格的归一化
-│  ├─ http.ts                    # FetchHttpClient（限速/重试/超时）
+│  ├─ range.ts                   # 话序号表达式解析（1-20,25）
+│  ├─ concurrency.ts             # mapLimit / forEachLimit（保序并发、限额遍历）
+│  ├─ http.ts                    # FetchHttpClient（并发信号量/节奏/重试/超时）
 │  ├─ pipeline.ts                # NovelFetcher 流水线
 │  └─ sites/
 │     ├─ registry.ts             # 输入路由
@@ -261,12 +309,21 @@ novel-processor/
 │        ├─ adapter.ts           # 站点实现
 │        ├─ selectors.ts         # 选择器集中管理
 │        └─ api.ts               # 官方 API 富化
-├─ scripts/fetch-novel.ts        # CLI 入口
+├─ scripts/                      # 调试壳（删掉不影响库）
+│  ├─ fetch-novel.ts             # CLI：只做参数解析 → 调方法 → 打印
+│  ├─ api-demo.ts                # 可运行的 API 示例 / 冒烟测试
+│  └─ fs-store.ts                # FsEpisodeStore（Node 专用，依赖 node:fs）
+├─ docs/
+│  ├─ architecture.md            # 本文
+│  └─ api.md                     # 前端方法参考
 └─ data/
    ├─ novels/<site>/<id>.json            # 作品目录
    └─ episodes/<site>/<id>/<n>.json      # 单话正文
       episodes/<site>/<id>/_manifest.json # 批量抓取清单
 ```
+
+**分层归属原则**：`src/lib` 里不允许出现 `node:*` 导入，否则前端打包会炸。
+文件系统实现放在 `scripts/fs-store.ts`，通过 `EpisodeStore` 接口注入。
 
 ---
 
@@ -304,7 +361,7 @@ export class KakuyomuAdapter implements SiteAdapter {
 
 | 阶段 | 能力 | 关键设计点 |
 | --- | --- | --- |
-| P1（已完成） | 目录解析 + 正文解析 + 批量提取 + CLI | 适配器契约、双源富化、断点续传 |
+| P1（已完成） | 目录解析 + 正文解析 + 批量提取 + 门面 API | 适配器契约、双源富化、断点续传、方法化封装 |
 | P2 | 本地书库索引 | `data/` 为真源，生成 `index.json` 汇总；按 `(site, novelId)` 唯一键 |
 | P3 | 增量更新 | 用 `meta.lastEpisodeAt` + 已有 `episodes.length` 做 diff，只抓新增页与新话 |
 | P4 | 正文清洗与去广告 | 在 `EpisodeContent.body` 之上加可插拔清洗管道 |
@@ -314,9 +371,14 @@ export class KakuyomuAdapter implements SiteAdapter {
 
 ### 关于浏览器直连
 
-`src/lib` 不依赖 Node API（`HttpClient` 是接口），理论上可直接在 Vue 里跑。
-但站点不返回 CORS 头，浏览器端必须经**同源代理**（Vite `server.proxy` 或自建 Node 服务）。
-因此推荐形态是：**Node 侧采集 + 前端只读 JSON**，而不是前端直连站点。
+`src/lib` 不依赖 Node API（`HttpClient` 是接口、存储是 `EpisodeStore` 接口），
+因此同一份代码可以直接在 Vue 里跑。唯一的障碍是站点不返回 CORS 头。
+
+已提供解法：`FetchHttpClient` 支持 `rewriteUrl` 把绝对地址改写到同源代理前缀，
+`vite.config.ts` 里已配好 `/api/syosetu` 与 `/api/narou` 两个开发代理，并已实测跑通。
+
+但生产环境不建议让用户浏览器直连站点——更合理的形态是 **Node 侧采集 + 前端只读 JSON**，
+这样限速策略集中可控，也不会把抓取压力转嫁给终端用户。
 
 ---
 

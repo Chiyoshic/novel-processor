@@ -28,6 +28,12 @@ export interface FetchHttpClientOptions {
   maxRetries?: number
   /** 额外请求头，例如 R18 分站需要的 cookie */
   headers?: Record<string, string>
+  /**
+   * 请求 URL 改写器。浏览器直连站点会被 CORS 拦下，
+   * 可通过它把绝对地址改写到同源代理前缀，例如：
+   * `u => u.replace('https://ncode.syosetu.com', '/api/syosetu')`
+   */
+  rewriteUrl?: (url: string) => string
   /** 调试用：打印每个请求 */
   onRequest?: (url: string, attempt: number) => void
 }
@@ -48,6 +54,7 @@ export class FetchHttpClient implements HttpClient {
   private readonly timeoutMs: number
   private readonly maxRetries: number
   private readonly headers: Record<string, string>
+  private readonly rewriteUrl: ((url: string) => string) | undefined
   private readonly onRequest: ((url: string, attempt: number) => void) | undefined
 
   /** 信号量：当前在途请求数 */
@@ -64,6 +71,7 @@ export class FetchHttpClient implements HttpClient {
     this.timeoutMs = options.timeoutMs ?? 20_000
     this.maxRetries = options.maxRetries ?? 3
     this.headers = options.headers ?? {}
+    this.rewriteUrl = options.rewriteUrl
     this.onRequest = options.onRequest
   }
 
@@ -142,12 +150,13 @@ export class FetchHttpClient implements HttpClient {
   private async requestOnce(url: string, attempt: number, externalSignal?: AbortSignal): Promise<HttpResponse> {
     this.onRequest?.(url, attempt)
 
+    const target = this.rewriteUrl ? this.rewriteUrl(url) : url
     const timeout = AbortSignal.timeout(this.timeoutMs)
     const signal = externalSignal ? AbortSignal.any([externalSignal, timeout]) : timeout
 
     let res: Response
     try {
-      res = await fetch(url, {
+      res = await fetch(target, {
         method: 'GET',
         redirect: 'follow',
         signal,
@@ -179,7 +188,8 @@ export class FetchHttpClient implements HttpClient {
     }
 
     const body = await res.text()
-    return { url: res.url || url, status: res.status, body }
+    // 返回「逻辑地址」而非代理地址，避免上层看到 /api/... 前缀
+    return { url, status: res.status, body }
   }
 }
 
