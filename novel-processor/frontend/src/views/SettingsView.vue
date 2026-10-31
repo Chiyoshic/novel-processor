@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
 import { api, type AiApiType, type AiModelConfig } from '@/api'
+import AccountSecurity from '@/components/AccountSecurity.vue'
 import { notify } from '@/stores/toast'
 import { reasoningLevels, type ReasoningDialect, type ReasoningLevel, type ResponseProfile } from '@shared/ai'
 
+const tab = ref<'models' | 'security'>('models')
 const models = ref<AiModelConfig[]>([])
 const loading = ref(true)
 const saving = ref(false)
@@ -96,10 +98,12 @@ onMounted(() => void load())
 
     <div class="settings-layout">
       <aside class="settings-tabs" aria-label="设置分类">
-        <button class="settings-tab active" type="button">模型管理</button>
+        <button class="settings-tab" :class="{ active: tab === 'models' }" type="button" @click="tab = 'models'">模型管理</button>
+        <button class="settings-tab" :class="{ active: tab === 'security' }" type="button" @click="tab = 'security'">账户安全</button>
       </aside>
 
-      <section class="settings-panel">
+      <AccountSecurity v-if="tab === 'security'" />
+      <section v-else class="settings-panel">
         <div class="panel-head">
           <div><h2>模型管理</h2><p>配置 OpenAI 或兼容 OpenAI 协议的自定义 LLM。</p></div>
           <button class="pill pill--small" type="button" @click="resetForm">新增模型</button>

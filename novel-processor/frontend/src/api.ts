@@ -1,4 +1,5 @@
 /** 本地数据 API 的类型化客户端。所有网络访问都从这里走。 */
+import { authClient } from '@/stores/auth'
 import type { EpisodeContent, NovelRecord, SiteInfo } from '@/lib'
 import { readTranslationStream } from '@/lib/translationStream'
 import type { TranslationTaskEvent, TranslationInitialization, TranslationOptions } from '@shared/translation'
@@ -122,10 +123,8 @@ export interface DownloadSummary {
   manifest: { have: number }
 }
 
-const apiBase = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await authClient.fetch(path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
@@ -163,7 +162,7 @@ export const api = {
     }),
 
   streamTranslation: async (site: string, novelId: string, options: TranslationOptions, onEvent: (event: TranslationTaskEvent) => void, signal?: AbortSignal) => {
-    const response = await fetch(`${apiBase}/library/${site}/${novelId}/translation/initialize`, {
+    const response = await authClient.fetch(`/library/${site}/${novelId}/translation/initialize`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
       body: JSON.stringify(options), signal,
     })

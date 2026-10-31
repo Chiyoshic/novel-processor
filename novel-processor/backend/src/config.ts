@@ -48,6 +48,10 @@ export interface AppConfig {
   fetchTimeoutMs: number
   fetchMaxRetries: number
   corsOrigins: string[]
+  authInitialUsername: string
+  authInitialPassword: string
+  authCookieSecure: 'auto' | 'true' | 'false'
+  authCookieSameSite: 'lax' | 'strict' | 'none'
 }
 
 const dataDir = pathEnv('DATA_DIR', './data')
@@ -65,8 +69,14 @@ export const appConfig: AppConfig = {
   fetchIntervalMs: intEnv('FETCH_INTERVAL_MS', 200, 0),
   fetchTimeoutMs: intEnv('FETCH_TIMEOUT_MS', 20_000, 1_000),
   fetchMaxRetries: intEnv('FETCH_MAX_RETRIES', 3, 0),
+  authInitialUsername: stringEnv('AUTH_INITIAL_USERNAME', 'chiyoshi'),
+  authInitialPassword: stringEnv('AUTH_INITIAL_PASSWORD', ''),
+  authCookieSecure: stringEnv('AUTH_COOKIE_SECURE', 'auto') as AppConfig['authCookieSecure'],
+  authCookieSameSite: stringEnv('AUTH_COOKIE_SAMESITE', 'lax') as AppConfig['authCookieSameSite'],
   corsOrigins: stringEnv('CORS_ORIGINS', '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean),
 }
+
+if (!['auto', 'true', 'false'].includes(appConfig.authCookieSecure) || !['lax', 'strict', 'none'].includes(appConfig.authCookieSameSite)) throw new Error('Cookie 鉴权配置无效')

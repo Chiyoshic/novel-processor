@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { watch } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import AppToast from '@/components/AppToast.vue'
+import { useAuth } from '@/stores/auth'
 import { useSites } from '@/stores/sites'
 
 const { load } = useSites()
 
-onMounted(() => void load())
+const { user } = useAuth()
+watch(user, (value) => { if (value) void load() }, { immediate: true })
 </script>
 
 <template>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useAuth } from '@/stores/auth'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import { RouterLink } from 'vue-router'
+const { user } = useAuth()
 </script>
 
 <template>
@@ -16,7 +18,7 @@ import { RouterLink } from 'vue-router'
     </div>
 
     <div class="header-actions">
-      <RouterLink class="settings-link" to="/settings" aria-label="设置" title="设置">
+      <RouterLink v-if="user" class="settings-link" to="/settings" aria-label="设置" title="设置">
 <span class="settings-icon" aria-hidden="true" />
       </RouterLink>
       <ThemeToggle />

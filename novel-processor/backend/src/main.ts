@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { mkdir, readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createNovelLibrary } from './lib/library'
@@ -9,6 +9,8 @@ import { resolveTarget } from './lib/sites/registry'
 import { FsEpisodeStore } from './storage/fs-store'
 import { LibraryDb } from '../server/db'
 import { createLibraryApiHandler } from '../server/libraryApi'
+import { AuthService, AuthError } from '../server/auth'
+import { applyCors } from '../server/cors'
 import { appConfig } from './config'
 
 async function readCatalogFile(novelsDir: string, site: string, novelId: string): Promise<NovelRecord | null> {
@@ -27,23 +29,6 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.end(JSON.stringify(payload))
 }
 
-function applyCors(req: IncomingMessage, res: ServerResponse): boolean {
-  const origin = req.headers.origin
-  if (!origin || appConfig.corsOrigins.length === 0) return false
-  if (appConfig.corsOrigins.includes('*') || appConfig.corsOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', appConfig.corsOrigins.includes('*') ? '*' : origin)
-    res.setHeader('Vary', 'Origin')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  }
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 204
-    res.end()
-    return true
-  }
-  return false
-}
-
 async function main(): Promise<void> {
   await mkdir(appConfig.dataDir, { recursive: true })
   const store = new FsEpisodeStore(appConfig.episodesDir)
@@ -60,6 +45,10 @@ async function main(): Promise<void> {
     minIntervalMs: appConfig.fetchIntervalMs,
   })
   const db = new LibraryDb(appConfig.dbPath)
+  const auth = new AuthService(appConfig.dbPath, { allowedOrigins: appConfig.corsOrigins, cookieSecure: appConfig.authCookieSecure, cookieSameSite: appConfig.authCookieSameSite })
+  await auth.seed(appConfig.authInitialUsername, appConfig.authInitialPassword)
+  appConfig.authInitialPassword = ''
+  delete process.env.AUTH_INITIAL_PASSWORD
 
   const detectSite = (input: string): string | null => {
     try {
@@ -123,14 +112,18 @@ async function main(): Promise<void> {
   })
 
   const server = createServer(async (req, res) => {
-    if (applyCors(req, res)) return
+    try {
+    if (applyCors(req, res, appConfig.corsOrigins)) return
 
     if (req.url === '/healthz' || req.url === '/healthz/') {
       sendJson(res, 200, { ok: true, service: 'novel-processor-api' })
       return
     }
 
+    if (await auth.handle(req, res)) return
+
     if (req.url?.startsWith('/api/')) {
+      auth.authenticate(req)
       const originalUrl = req.url
       req.url = originalUrl.slice('/api'.length) || '/'
       await handler(req, res, () => sendJson(res, 404, { error: '接口不存在' }))
@@ -139,10 +132,11 @@ async function main(): Promise<void> {
     }
 
     sendJson(res, 404, { error: '接口不存在' })
+    } catch (error) { sendJson(res, error instanceof AuthError ? error.status : 500, { error: error instanceof AuthError ? error.message : '服务暂不可用' }) }
   })
 
   const close = () => {
-    server.close(() => db.close())
+    server.close(() => { auth.close(); db.close() })
   }
   process.once('SIGINT', close)
   process.once('SIGTERM', close)
