@@ -1,7 +1,8 @@
+import type { MaintenancePreview } from '../../../shared/brief-maintenance'
 import type { TranslationInitialization, TranslationTaskEvent } from '../../../shared/translation'
 
 /** NDJSON is decoded incrementally: UTF-8 characters and events may cross transport chunks. */
-export async function readTranslationStream(response: Response, onEvent: (event: TranslationTaskEvent) => void): Promise<TranslationInitialization> {
+async function readTaskStream<T>(response: Response, onEvent: (event: TranslationTaskEvent) => void, complete: (event: TranslationTaskEvent) => T | undefined): Promise<T> {
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null
     throw new Error(payload?.error ?? `请求失败（${response.status}）`)
@@ -10,13 +11,13 @@ export async function readTranslationStream(response: Response, onEvent: (event:
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let pending = ''
-  let result: TranslationInitialization | undefined
+  let result: T | undefined
   function consume(line: string): void {
     if (!line.trim()) return
     const event = JSON.parse(line) as TranslationTaskEvent
     if (event.type === 'error') { onEvent(event); throw new Error(event.message) }
     onEvent(event)
-    if (event.type === 'completed') result = event.saved
+    result = complete(event) ?? result
   }
   try {
     for (;;) {
@@ -35,4 +36,12 @@ export async function readTranslationStream(response: Response, onEvent: (event:
     if (!result) throw new Error('任务连接已断开，未收到保存成功的确认；请重新读取已保存材料后再决定是否重试')
     return result
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
+}
+
+
+export function readTranslationStream(response: Response, onEvent: (event: TranslationTaskEvent) => void): Promise<TranslationInitialization> {
+  return readTaskStream(response, onEvent, (event) => event.type === 'completed' ? event.saved : undefined)
+}
+export function readMaintenanceStream(response: Response, onEvent: (event: TranslationTaskEvent) => void): Promise<MaintenancePreview> {
+  return readTaskStream(response, onEvent, (event) => event.type === 'maintenance-preview' ? event.preview : undefined)
 }

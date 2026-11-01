@@ -36,6 +36,14 @@ npm run build
 
 前端与 API 已启用 AT/RT 登录鉴权，不开放注册。首次启动需要在后端私有环境变量配置初始密码；登录、刷新、修改密码及部署说明见 `docs/auth.md`。
 
+### 生产环境刷新 / 后退 404
+
+前端使用 History 路由，Nginx 必须配置 `try_files $uri $uri/ /index.html;`。宝塔站点可直接使用 `deploy/nginx/baota-spa.conf`，具体位置、重载及验证步骤见 `docs/frontend-deployment.md`。只更新 `dist` 无法修复服务器的路由 404。
+
+## 阅读记录
+
+原文与译文共用未读／在读／已读状态，SQLite 持久化；目录支持逐话、按章、全书修改，书架以按话序排列的红黄绿状态条显示阅读分布。规则、接口和备份说明见 `docs/reading-progress.md`。
+
 ## 持久化与备份
 
 Compose 将项目的 `data/` 目录挂载到容器 `/app/data`。目录包含作品目录 JSON、单话 JSON、SQLite 数据库及其 WAL/SHM 文件和审计日志。停止或重建容器不会删除此目录。不要同时运行多个后端进程访问同一个数据目录。

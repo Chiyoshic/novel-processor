@@ -3,21 +3,41 @@ import { computed, ref, watch } from 'vue'
 import type { Episode, NovelRecord } from '@/lib'
 import type { DownloadJob } from '@/api'
 import { episodeTranslationLabels, type EpisodeTranslationStatus } from '@shared/episode-translation'
+import ReadingStatusBar from './ReadingStatusBar.vue'
+import { readingLabels, readingStates, type ReadingProgress, type ReadingState, type UpdateReading } from '@shared/reading'
 import { detectLang } from '@/utils/lang'
 
 const props = defineProps<{
   catalog: NovelRecord
   downloaded: Set<number>
   translations?: EpisodeTranslationStatus[]
+  reading?: ReadingProgress | null
+  readingSaving?: boolean
   busy: string | null
   job: DownloadJob | null
 }>()
 
 const emit = defineEmits<{
+  'update-reading': [input: UpdateReading]
   open: [index: number]
   download: [payload: { range?: string; all?: boolean; overwrite?: boolean }]
 }>()
 
+const bookReadingState = ref<ReadingState>('read')
+const readingByIndex = computed(() => new Map((props.reading?.episodes ?? []).map((item) => [item.index, item.status])))
+function setEpisodeReading(event: Event, index: number): void {
+  const target = event.target as HTMLSelectElement
+  const status = target.value as ReadingState
+  target.value = readingByIndex.value.get(index) ?? 'unread'
+  emit('update-reading', { scope: 'episode', index, status })
+}
+function setChapterReading(event: Event, key: string): void {
+  const target = event.target as HTMLSelectElement
+  const status = target.value as ReadingState
+  target.value = ''
+  if (!status) return
+  emit('update-reading', key === 'all' ? { scope: 'book', status } : { scope: 'chapter', chapterIndex: key === 'loose' ? null : Number(key.slice(1)), status })
+}
 const translationStates = computed(() => new Map((props.translations ?? []).map((item) => [item.index, item])))
 const translatedCount = computed(() => (props.translations ?? []).filter((item) => item.hasTranslation && item.status !== 'stale').length)
 function translationLabel(index: number): string { const state = translationStates.value.get(index); return state ? episodeTranslationLabels[state.status] : '未翻译' }
@@ -249,6 +269,10 @@ watch(
       </div>
     </div>
 
+    <section class="reading-management" aria-label="阅读进度管理">
+      <ReadingStatusBar v-if="reading" :progress="reading" />
+      <div class="book-reading-actions"><label>全书阅读状态<select v-model="bookReadingState" :disabled="readingSaving"><option v-for="state in readingStates" :key="state" :value="state">{{ readingLabels[state] }}</option></select></label><button class="pill pill--ghost pill--small" type="button" :disabled="readingSaving" @click="emit('update-reading', { scope: 'book', status: bookReadingState })">{{ readingSaving ? '保存中…' : '应用全书' }}</button></div>
+    </section>
     <div class="list-head">
       <span class="eyebrow eyebrow--faint">Contents</span>
       <div class="list-tools">
@@ -260,14 +284,14 @@ watch(
 
     <div class="episode-list">
       <div v-for="group in groups" :key="group.key" class="group">
-        <button class="group-head" type="button" @click="toggle(group.key)">
+        <div class="group-heading"><button class="group-head" type="button" @click="toggle(group.key)">
           <span class="group-caret" :class="{ open: !isCollapsed(group.key) }" aria-hidden="true">▸</span>
           <span class="group-title serif" :lang="lang">{{ group.title }}</span>
-          <span class="group-count">{{ group.done }}/{{ group.episodes.length }}</span>
-        </button>
+          <span class="group-count">已读 {{ group.episodes.filter((episode) => readingByIndex.get(episode.index) === 'read').length }}/{{ group.episodes.length }} · 已存 {{ group.done }}</span>
+        </button><select class="chapter-reading-select" :disabled="readingSaving" :aria-label="`修改${group.title}的阅读状态`" value="" @change="setChapterReading($event, group.key)"><option value="" disabled>批量标记</option><option v-for="state in readingStates" :key="state" :value="state">{{ readingLabels[state] }}</option></select></div>
 
         <ul v-show="!isCollapsed(group.key)" class="episodes">
-          <li v-for="episode in group.episodes" :key="episode.index">
+          <li v-for="episode in group.episodes" :key="episode.index" class="episode-item">
             <button
               class="episode"
               :class="{ done: downloaded.has(episode.index) }"
@@ -281,6 +305,7 @@ watch(
                 {{ downloaded.has(episode.index) ? '已存' : '未存' }}
               </span>
             </button>
+            <select class="episode-reading-select" :class="`reading-${readingByIndex.get(episode.index) ?? 'unread'}`" :value="readingByIndex.get(episode.index) ?? 'unread'" :disabled="readingSaving" :aria-label="`第 ${episode.index} 话阅读状态`" @change="setEpisodeReading($event, episode.index)"><option v-for="state in readingStates" :key="state" :value="state">{{ readingLabels[state] }}</option></select>
           </li>
         </ul>
       </div>
@@ -289,6 +314,13 @@ watch(
 </template>
 
 <style scoped>
+.reading-management { margin-top: 22px; padding-top: 6px; border-top: 1px solid var(--line); }
+.book-reading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }.book-reading-actions label { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.book-reading-actions select, .chapter-reading-select, .episode-reading-select { min-height: 40px; padding: 8px 10px; border-radius: 12px; background: var(--paper); color: var(--ink); font-family: inherit; font-size: 12px; cursor: pointer; }
+.group-heading { display: flex; align-items: center; gap: 10px; }.group-heading .group-head { flex: 1; min-width: 0; }.chapter-reading-select { flex: none; max-width: 105px; }
+.episode-item { display: flex; align-items: center; gap: 8px; }.episode-item .episode { flex: 1; min-width: 0; width: auto; }.episode-reading-select { flex: none; max-width: 82px; }.episode-reading-select.reading-unread { box-shadow: inset 3px 0 var(--reading-unread); }.episode-reading-select.reading-reading { box-shadow: inset 3px 0 var(--reading-active); }.episode-reading-select.reading-read { box-shadow: inset 3px 0 var(--reading-done); }
+@media(max-width:580px) { .group-heading { flex-wrap: wrap; padding-bottom: 8px; }.group-heading .group-head { flex-basis: 100%; }.chapter-reading-select { margin-left: auto; }.episode-item { gap: 4px; }.episode-reading-select { max-width: 74px; padding-inline: 6px; font-size: 13px; }.group-count { white-space: normal; } }
+
 .detail {
   min-width: 0;
   padding: 26px 28px 22px;

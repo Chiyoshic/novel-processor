@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { readerStyle } from '@/lib/reader-preferences'
 import AppHeader from '@/components/AppHeader.vue'
 import AppToast from '@/components/AppToast.vue'
 import { useAuth } from '@/stores/auth'
 import { useSites } from '@/stores/sites'
 
+const route = useRoute()
+const isReading = computed(() => route.name === 'reader')
 const { load } = useSites()
 
 const { user } = useAuth()
@@ -12,7 +16,7 @@ watch(user, (value) => { if (value) void load() }, { immediate: true })
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'app-shell--reading': isReading }" :style="isReading ? readerStyle : undefined">
     <AppHeader />
 
     <RouterView v-slot="{ Component }">

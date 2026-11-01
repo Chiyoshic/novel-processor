@@ -97,7 +97,7 @@ onMounted(() => void load())
     </div>
 
     <div class="settings-layout">
-      <aside class="settings-tabs" aria-label="设置分类">
+      <aside class="settings-tabs tab-selector" aria-label="设置分类">
         <button class="settings-tab" :class="{ active: tab === 'models' }" type="button" @click="tab = 'models'">模型管理</button>
         <button class="settings-tab" :class="{ active: tab === 'security' }" type="button" @click="tab = 'security'">账户安全</button>
       </aside>
@@ -153,7 +153,7 @@ onMounted(() => void load())
 .settings-layout { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; align-items: start; }
 .settings-tabs, .settings-panel { border-radius: var(--radius-lg); background: var(--surface-muted); }
 .settings-tabs { padding: 8px; }
-.settings-tab { width: 100%; padding: 12px 14px; border-radius: 14px; background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
+.settings-tab { width: 100%; padding: 12px 14px; border-radius: 14px; background: transparent; color: var(--muted); text-align: center; cursor: pointer; }
 .settings-tab.active { background: var(--blue); color: #fff; font-weight: 600; }
 .settings-panel { padding: 24px; }
 .panel-head h2 { font-size: 20px; }

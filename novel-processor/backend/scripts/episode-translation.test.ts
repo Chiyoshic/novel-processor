@@ -96,9 +96,9 @@ test('无效 updates 不使有效译文失败，正文结构仍必须完整', ()
 test('提示词包含本话、最新基线、另一话完整译文及边界规则', () => {
   const model = { outputTokens: 2000, inputTokens: 100000, windowTokens: 200000 } as AiModelConfig
   const reference = { index: 2, title: '参考标题', body: '参考全文', preface: '', afterword: '' }
-  const built = buildEpisodeTranslationInput(record, source(3), translationFixture.result, model, '自然中文', reference)
+  const built = buildEpisodeTranslationInput(record, source(3), translationFixture.result, model, '自然中文', [reference])
   const data = JSON.parse(built.prompt.slice(built.prompt.indexOf('\n') + 1))
-  assert.equal(data.episode.index, 3); assert.deepEqual(data.reference_translation, reference)
+  assert.equal(data.episode.index, 3); assert.deepEqual(data.reference_translations, [reference])
   assert.deepEqual(data.baseline, translationFixture.result)
   assert.match(EPISODE_TRANSLATION_SYSTEM_PROMPT, /不得把其剧情、句子或人物状态复制进本话/)
   assert.match(EPISODE_TRANSLATION_SYSTEM_PROMPT, /序号/)
@@ -111,9 +111,9 @@ test('批量串行 + JSON 重试 + 每话落盘 + 材料增量 + 最近译文参
     await waitJob(job)
     assert.deepEqual(job.indices, [1, 2, 3, 4]); assert.deepEqual(job.done, [1, 2, 4]); assert.deepEqual(job.failed.map((item) => item.index), [3])
     assert.deepEqual(requests.map((item) => (item.episode as { index: number }).index), [1, 2, 2, 3, 4])
-    assert.equal(requests[0]!.reference_translation, null)
-    assert.equal((requests[1]!.reference_translation as { index: number }).index, 1)
-    assert.equal((requests[4]!.reference_translation as { index: number }).index, 2)
+    assert.deepEqual(requests[0]!.reference_translations, [])
+    assert.equal((requests[1]!.reference_translations as { index: number }[])[0]!.index, 1)
+    assert.equal((requests[4]!.reference_translations as { index: number }[])[0]!.index, 2)
     assert.equal((requests[1]!.baseline as { style: { overall_zh: string } }).style.overall_zh, '第一话补充的笔调')
     const episode = await store.read(ref, 1)
     assert.equal(episode?.body, source(1).body)
@@ -208,4 +208,37 @@ test('第二步 HTTP API 启动、轮询、读取译文及字段错误处理', a
       assert.equal(stop.status, 200)
     } finally { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())) }
   }, (data, res) => stream(res, output((data.episode as { index: number }).index)))
+})
+
+
+test('可选多话上下文：按目录排序、串行纳入刚完成译文、排除过期和后续话；0 关闭', async () => {
+  await fixture(async ({ service, model, requests, store }) => {
+    const invalid = [-1, 51, 1.5, '2', null]
+    for (const count of invalid) assert.throws(() => service.start(record, { ...options(model.id, [1]), referenceEpisodeCount: count } as TranslateEpisodesOptions), /参考数量/)
+    const job = service.start(record, { ...options(model.id, [1, 2, 3]), referenceEpisodeCount: 2 })
+    await waitJob(job)
+    const refs = (request: Record<string, unknown>) => (request.reference_translations as Array<{ index: number }>).map((entry) => entry.index)
+    assert.deepEqual(requests.map(refs), [[], [1], [1, 2]])
+    assert.equal(job.referenceEpisodeCount, 2)
+    assert.deepEqual(job.current?.referenceEpisodeIndices, [1, 2])
+    const stored = (await store.read(ref, 3))!.translation!
+    assert.deepEqual(stored.referenceEpisodeIndices, [1, 2]); assert.equal(stored.referenceEpisodeIndex, 2)
+    assert.equal(stored.referenceEpisodeCount, 2)
+    await store.write(ref, { ...(await store.read(ref, 2))!, body: '原文已更新' })
+    const fourth = service.start(record, { ...options(model.id, [4]), referenceEpisodeCount: 2 })
+    await waitJob(fourth)
+    assert.deepEqual(refs(requests.at(-1)!), [1, 3])
+    const first = service.start(record, { ...options(model.id, [1]), overwrite: true, referenceEpisodeCount: 2 })
+    await waitJob(first)
+    assert.deepEqual(refs(requests.at(-1)!), [])
+    const disabled = service.start(record, { ...options(model.id, [4]), overwrite: true, referenceEpisodeCount: 0 })
+    await waitJob(disabled)
+    assert.deepEqual(refs(requests.at(-1)!), [])
+    assert.deepEqual(disabled.current?.referenceEpisodeIndices, [])
+    assert.deepEqual((await store.read(ref, 4))!.translation!.referenceEpisodeIndices, [])
+  }, (data, res) => stream(res, output((data.episode as { index: number }).index)))
+})
+test('多话参考预算不足时提示减少话数，不静默截断输入', () => {
+  const references = [1, 2].map((index) => ({ index, title: '参考', preface: '', body: '参考全文'.repeat(100), afterword: '' }))
+  assert.throws(() => buildEpisodeTranslationInput(record, source(3), translationFixture.result, { inputTokens: 10, windowTokens: 1000, outputTokens: 1000 } as AiModelConfig, '', references), /减少参考话数/)
 })

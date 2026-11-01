@@ -76,7 +76,7 @@ h1 { font-size: 30px; margin-top: 8px; }
 .translation-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
 .workflow { background: var(--surface-muted); border-radius: var(--radius-lg); padding: 20px 16px; }
 .workflow ol { list-style: none; margin: 16px 0; padding: 0; }
-.step-content { min-width: 0; }.workflow li + li { margin-top: 8px; }.workflow li button { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 10px; background: var(--blue-soft); color: var(--blue-dark); padding: 12px; border-radius: 16px; font-size: 12px; font-weight: 600; }
+.step-content { min-width: 0; }.workflow li + li { margin-top: 8px; }.workflow li button { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: left; display: flex; align-items: center; justify-content: flex-start; gap: 10px; background: var(--blue-soft); color: var(--blue-dark); padding: 12px; border-radius: 16px; font-size: 12px; font-weight: 600; }
 .workflow li button:not([aria-current]) { background: transparent; color: var(--muted); }.workflow li button:hover { background: var(--blue-soft); }
 .step-index { font-size: 11px; }
 .page-state { display: grid; justify-items: center; gap: 20px; padding: 60px 16px; color: var(--muted); font-size: 14px; }

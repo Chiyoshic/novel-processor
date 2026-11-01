@@ -15,17 +15,7 @@ function cycleTheme(): void {
 
 <template>
   <button class="theme-toggle" type="button" :aria-label="label" :title="label" @click="cycleTheme">
-    <svg v-if="theme === 'system'" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="13" rx="2" />
-      <path d="M8 21h8M12 17v4" />
-    </svg>
-    <svg v-else-if="theme === 'light'" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
-    </svg>
-    <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M20.8 14.2A9 9 0 0 1 9.8 3.2a9 9 0 1 0 11 11Z" />
-    </svg>
+    <span class="theme-icon" :class="`theme-icon--${theme}`" aria-hidden="true" />
   </button>
 </template>
 
@@ -55,12 +45,15 @@ function cycleTheme(): void {
   outline-offset: 2px;
 }
 
-.theme-toggle svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.theme-icon {
+  display: block;
+  width: 19px;
+  height: 19px;
+  background: currentColor;
+  -webkit-mask: var(--theme-icon) center / contain no-repeat;
+  mask: var(--theme-icon) center / contain no-repeat;
 }
+.theme-icon--system { --theme-icon: url('/icons/display.svg'); }
+.theme-icon--light { --theme-icon: url('/icons/sun.max.svg'); }
+.theme-icon--dark { --theme-icon: url('/icons/moon.svg'); }
 </style>

@@ -5,6 +5,7 @@ import type { NovelRecord } from '@/lib'
 import type { TranslationInitialization } from '@shared/translation'
 import { reasoningLevels, type ReasoningLevel } from '@shared/ai'
 import { notify } from '@/stores/toast'
+import BriefMaintenance from './BriefMaintenance.vue'
 import TranslationBriefView from './TranslationBriefView.vue'
 import TranslationTaskPanel from './TranslationTaskPanel.vue'
 import { applyTranslationEvent, finishTranslationTask, newTranslationTask, type TranslationTaskState } from '@/lib/translationTask'
@@ -12,6 +13,7 @@ import { applyTranslationEvent, finishTranslationTask, newTranslationTask, type 
 const props = defineProps<{ catalog: NovelRecord }>()
 const loading = ref(true)
 const saving = ref(false)
+const maintaining = ref(false)
 const task = ref<TranslationTaskState | null>(null)
 let generation: AbortController | undefined
 const error = ref('')
@@ -33,6 +35,7 @@ const sample = computed(() => {
 watch(() => form.value.modelId, () => { form.value.reasoningLevel = 'inherit' })
 
 async function load(): Promise<void> {
+  if (saving.value || maintaining.value) return
   loading.value = true
   error.value = ''
   try {
@@ -57,7 +60,7 @@ async function load(): Promise<void> {
 }
 
 async function generate(): Promise<void> {
-  if (saving.value || !selectedModel.value || !sample.value.length) return
+  if (saving.value || maintaining.value || !selectedModel.value || !sample.value.length) return
   saving.value = true
   error.value = ''
   const controller = new AbortController()
@@ -97,11 +100,11 @@ onUnmounted(() => generation?.abort())
   <section class="translation-workspace" aria-labelledby="translation-title">
       <header class="workspace-head">
         <h2 id="translation-title">初始化翻译材料</h2>
-        <button v-if="saved && !loading" class="pill pill--ghost pill--small" type="button" :disabled="saving" :aria-expanded="editing" @click="editing = !editing">{{ editing ? '收起配置' : '重新初始化' }}</button>
+        <button v-if="saved && !loading" class="pill pill--ghost pill--small" type="button" :disabled="saving || maintaining" :aria-expanded="editing" @click="editing = !editing">{{ editing ? '收起配置' : '重新初始化' }}</button>
       </header>
       <p v-if="loading" class="message" role="status">读取翻译材料…</p>
       <form v-else-if="!saved || editing" @submit.prevent="generate">
-        <fieldset :disabled="saving">
+        <fieldset :disabled="saving || maintaining">
           <label>使用模型<select v-model.number="form.modelId" required><option :value="0" disabled>请选择模型</option><option v-for="model in models" :key="model.id" :value="model.id">{{ model.name }} · {{ model.model }}</option></select></label>
           <div class="form-row"><label>取前多少{{ unit }}<input v-model.number="form.chapterCount" type="number" min="1" :max="maxCount" step="1" required /></label><label>本次思考等级<select v-model="form.reasoningLevel"><option value="inherit">沿用模型配置（{{ selectedModel?.reasoningLevel ?? 'default' }}）</option><option v-for="level in levels" :key="level" :value="level">{{ level === 'default' ? '默认' : level === 'off' ? '关闭' : level }}</option></select></label></div>
           <p class="hint">共 {{ maxCount }} {{ unit }}，按目录顺序选取；本次将读取 {{ sample.length }} 话正文。请先在详情页下载这一范围。未分章作品按话选取。</p>
@@ -110,10 +113,11 @@ onUnmounted(() => generation?.abort())
         </fieldset>
         <p v-if="!models.length" class="message">尚无启用的模型。<RouterLink to="/settings">前往模型管理</RouterLink></p>
         <p v-if="saved" class="hint">重新生成仅在成功后替换当前概要，失败会保留原有内容。</p>
-        <div class="actions"><button class="pill" type="submit" :disabled="saving || !selectedModel || !sample.length">{{ saving ? '正在阅读材料并生成…' : saved ? '重新生成概要' : '开始初始化' }}</button></div>
+        <div class="actions"><button class="pill" type="submit" :disabled="saving || maintaining || !selectedModel || !sample.length">{{ saving ? '正在阅读材料并生成…' : saved ? '重新生成概要' : '开始初始化' }}</button></div>
       </form>
       <TranslationTaskPanel v-if="task" :task="task" @cancel="generation?.abort()" />
-      <div v-if="error" class="error" role="alert">{{ error }}<button class="pill pill--ghost pill--small" type="button" :disabled="saving" @click="load">重新读取</button></div>
+      <div v-if="error" class="error" role="alert">{{ error }}<button class="pill pill--ghost pill--small" type="button" :disabled="saving || maintaining" @click="load">重新读取</button></div>
+      <BriefMaintenance v-if="saved" :saved="saved" :models="models" :disabled="saving" @busy="maintaining = $event" @updated="saved = $event" />
       <TranslationBriefView v-if="saved" class="result" :saved="saved" @export="exportJson" />
   </section>
 </template>

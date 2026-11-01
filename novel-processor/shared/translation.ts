@@ -57,6 +57,7 @@ export interface TranslationInitialization {
 }
 
 export type TranslationTaskEvent = import('./ai-task').AiProgressEvent | ({ at: number } & (
+  | { type: 'maintenance-preview'; preview: import('./brief-maintenance').MaintenancePreview }
   | { type: 'heartbeat' }
   | { type: 'started'; limits?: { totalTimeoutMs: number; idleTimeoutMs: number }; modelName: string; model: string; apiType: string; reasoningLevel: ReasoningLevel; episodeCount: number }
   | { type: 'phase'; phase: 'reading' | 'preparing' | 'saving' }

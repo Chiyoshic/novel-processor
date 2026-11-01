@@ -1,7 +1,9 @@
 /** 本地数据 API 的类型化客户端。所有网络访问都从这里走。 */
+import type { ReadingProgressFilter, ReadingSummary, ReadingProgress, UpdateReading } from '@shared/reading'
 import { authClient } from '@/stores/auth'
 import type { EpisodeContent, NovelRecord, SiteInfo } from '@/lib'
-import { readTranslationStream } from '@/lib/translationStream'
+import type { DuplicateGroup, BriefRevision, MaintenanceOptions } from '@shared/brief-maintenance'
+import { readTranslationStream, readMaintenanceStream } from '@/lib/translationStream'
 import type { TranslationTaskEvent, TranslationInitialization, TranslationOptions } from '@shared/translation'
 import type { EpisodeTranslationsResponse, TranslateEpisodesOptions } from '@shared/episode-translation'
 import type { ReasoningDialect, ReasoningLevel, ResponseProfile } from '@shared/ai'
@@ -24,6 +26,7 @@ export interface LibraryEntry {
   /** 非空表示在回收站中 */
   deletedAt: string | null
   tags: string[]
+  reading?: ReadingSummary
 }
 
 
@@ -67,6 +70,7 @@ export interface LibraryQuery {
   genre?: string
   tag?: string
   progress?: ProgressFilter
+  readingProgress?: ReadingProgressFilter
   sort?: NovelSort
   /** 只看回收站 */
   trashed?: boolean
@@ -137,6 +141,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  readingProgress: (site: string, novelId: string) => request<ReadingProgress>(`/library/${site}/${novelId}/reading`),
+  updateReading: (site: string, novelId: string, options: UpdateReading) => request<ReadingProgress>(`/library/${site}/${novelId}/reading`, { method: 'PUT', body: JSON.stringify(options) }),
   sites: () => request<SiteInfo[]>('/sites'),
 
   aiModels: () => request<AiModelConfig[]>('/settings/models'),
@@ -168,6 +174,14 @@ export const api = {
     })
     return readTranslationStream(response, onEvent)
   },
+
+  briefMaintenance: (site: string, novelId: string) => request<{ baseHash: string; bytes: number; duplicates: DuplicateGroup[]; revisions: BriefRevision[] }>(`/library/${site}/${novelId}/translation/maintenance`),
+  previewBriefMaintenance: async (site: string, novelId: string, options: MaintenanceOptions, onEvent: (event: TranslationTaskEvent) => void, signal?: AbortSignal) => {
+    const response = await authClient.fetch(`/library/${site}/${novelId}/translation/maintenance/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' }, body: JSON.stringify(options), signal })
+    return readMaintenanceStream(response, onEvent)
+  },
+  applyBriefMaintenance: (site: string, novelId: string, previewId: string) => request<TranslationInitialization>(`/library/${site}/${novelId}/translation/maintenance/apply`, { method: 'POST', body: JSON.stringify({ previewId }) }),
+  restoreBriefRevision: (site: string, novelId: string, revisionId: number, baseHash: string) => request<TranslationInitialization>(`/library/${site}/${novelId}/translation/maintenance/restore`, { method: 'POST', body: JSON.stringify({ revisionId, baseHash }) }),
 
   episodeTranslations: (site: string, novelId: string) => request<EpisodeTranslationsResponse>(`/library/${site}/${novelId}/translation/episodes`),
   translateEpisodes: (site: string, novelId: string, options: TranslateEpisodesOptions) => request<EpisodeTranslationsResponse>(`/library/${site}/${novelId}/translation/episodes`, { method: 'POST', body: JSON.stringify(options) }),

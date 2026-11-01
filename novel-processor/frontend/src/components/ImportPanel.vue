@@ -60,7 +60,7 @@ function submit(): void {
           />
           <button class="pill" type="submit" :disabled="busy || !input.trim()">
             <span>{{ busy ? '解析中…' : '添加作品' }}</span>
-            <span class="pill__arrow" aria-hidden="true">↗</span>
+            <span class="import-plus-icon" aria-hidden="true" />
           </button>
         </div>
       </form>
@@ -69,6 +69,16 @@ function submit(): void {
 </template>
 
 <style scoped>
+.import-plus-icon {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: url('/icons/plus.svg') center / contain no-repeat;
+  mask: url('/icons/plus.svg') center / contain no-repeat;
+}
+
 .import-band {
   position: relative;
   padding: 18px 20px 20px;
@@ -160,7 +170,7 @@ function submit(): void {
     width: 100%;
     height: 52px;
     min-height: 52px;
-    justify-content: space-between;
+    justify-content: center;
     padding-inline: 13px;
     font-size: 14px;
   }

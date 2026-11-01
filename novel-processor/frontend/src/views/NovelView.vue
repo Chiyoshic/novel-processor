@@ -5,6 +5,7 @@ import type { NovelRecord } from '@/lib'
 import { api, type DownloadJob } from '@/api'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import NovelDetail from '@/components/NovelDetail.vue'
+import type { ReadingProgress, UpdateReading } from '@shared/reading'
 import type { EpisodeTranslationStatus } from '@shared/episode-translation'
 import { notify } from '@/stores/toast'
 
@@ -13,6 +14,8 @@ const router = useRouter()
 
 const catalog = ref<NovelRecord | null>(null)
 const downloaded = ref<Set<number>>(new Set())
+const reading = ref<ReadingProgress | null>(null)
+const readingSaving = ref(false)
 const translations = ref<EpisodeTranslationStatus[]>([])
 let translationPoll: ReturnType<typeof setInterval> | undefined
 const busy = ref<string | null>(null)
@@ -33,12 +36,14 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const [record, progress, translated] = await Promise.all([
+    const [record, progress, translated, readProgress] = await Promise.all([
       api.catalog(props.site, props.novelId),
       api.progress(props.site, props.novelId),
       api.episodeTranslations(props.site, props.novelId),
+      api.readingProgress(props.site, props.novelId).catch(() => { notify('阅读状态读取失败，可刷新重试', 'error'); return null }),
     ])
     catalog.value = record
+    reading.value = readProgress
     translations.value = translated.episodes
     downloaded.value = new Set(progress.indices)
     job.value = progress.job
@@ -47,6 +52,14 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+async function updateReading(input: UpdateReading): Promise<void> {
+  if (readingSaving.value) return
+  readingSaving.value = true
+  try { reading.value = await api.updateReading(props.site, props.novelId, input) }
+  catch (error) { notify(error instanceof Error ? error.message : '阅读状态保存失败', 'error') }
+  finally { readingSaving.value = false }
 }
 
 async function refreshProgress(): Promise<void> {
@@ -100,6 +113,7 @@ async function handleRefresh(): Promise<void> {
   try {
     const record = await api.refresh(props.site, props.novelId)
     catalog.value = record
+    reading.value = await api.readingProgress(props.site, props.novelId)
     error.value = null
     await refreshProgress()
     notify(`目录已更新：${record.episodes.length} 话 / ${record.chapters.length} 章`)
@@ -176,6 +190,9 @@ onUnmounted(() => {
       :catalog="catalog"
       :downloaded="downloaded"
       :translations="translations"
+      :reading="reading"
+      :reading-saving="readingSaving"
+      @update-reading="updateReading"
       :busy="busy"
       :job="job"
       @open="openEpisode"

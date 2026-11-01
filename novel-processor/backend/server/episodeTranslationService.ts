@@ -4,6 +4,7 @@ import type { EpisodeStore } from '../src/lib/store'
 import type { NovelRecord } from '../src/lib/types'
 import type { AiModelConfig, LibraryDb } from './db'
 import type { TranslateEpisodesOptions, EpisodeTranslationStatus, TranslationBatchJob, EpisodeTranslationsResponse, TranslationStyleReference } from '../../shared/episode-translation'
+import { DEFAULT_REFERENCE_EPISODE_COUNT, MAX_REFERENCE_EPISODE_COUNT } from '../../shared/episode-translation'
 import type { AiProgressEvent } from '../../shared/ai-task'
 import { validateReasoning } from '../../shared/ai'
 import { hashEpisodeSource } from '../src/translation-source'
@@ -39,11 +40,14 @@ export class EpisodeTranslationService {
     const selected = new Set(options.indices)
     if ([...selected].some((index) => !record.episodes.some((episode) => episode.index === index))) throw new TranslationBatchError('选择中包含目录不存在的话序号')
     if (typeof options.overwrite !== 'boolean' || typeof options.requirements !== 'string' || options.requirements.length > 10000) throw new TranslationBatchError('翻译选项无效，附加要求最多 10000 字')
+    const referenceEpisodeCount = options.referenceEpisodeCount === undefined ? DEFAULT_REFERENCE_EPISODE_COUNT : options.referenceEpisodeCount
+    if (!Number.isSafeInteger(referenceEpisodeCount) || referenceEpisodeCount < 0 || referenceEpisodeCount > MAX_REFERENCE_EPISODE_COUNT) throw new TranslationBatchError(`最近译文参考数量须为 0–${MAX_REFERENCE_EPISODE_COUNT} 的整数`)
+    options = { ...options, referenceEpisodeCount }
     const model = this.db.getAiModel(options.modelId)
     if (!model?.enabled) throw new TranslationBatchError('模型不存在或未启用')
     validateReasoning(model.reasoningDialect, options.reasoningLevel ?? model.reasoningLevel)
     const indices = record.episodes.filter((episode) => selected.has(episode.index)).map((episode) => episode.index)
-    const job: TranslationBatchJob = { id: randomUUID(), limits: { totalTimeoutMs: DEFAULT_AI_RETRY_POLICY.totalTimeoutMs, idleTimeoutMs: DEFAULT_AI_RETRY_POLICY.requestTimeoutMs, maxAttempts: DEFAULT_AI_RETRY_POLICY.maxAttempts }, running: true, stopping: false, startedAt: Date.now(), finishedAt: null, modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, indices, done: [], failed: [], skipped: [], cancelled: [], current: null }
+    const job: TranslationBatchJob = { id: randomUUID(), limits: { totalTimeoutMs: DEFAULT_AI_RETRY_POLICY.totalTimeoutMs, idleTimeoutMs: DEFAULT_AI_RETRY_POLICY.requestTimeoutMs, maxAttempts: DEFAULT_AI_RETRY_POLICY.maxAttempts }, running: true, stopping: false, startedAt: Date.now(), finishedAt: null, modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, referenceEpisodeCount, indices, done: [], failed: [], skipped: [], cancelled: [], current: null }
     const controller = new AbortController()
     this.locks.add(key)
     this.controllers.set(key, controller)
@@ -66,16 +70,20 @@ export class EpisodeTranslationService {
     this.db.saveEpisodeTranslation(result)
     return result
   }
-  private async styleReference(record: NovelRecord, index: number): Promise<TranslationStyleReference | undefined> {
+  private async styleReferences(record: NovelRecord, index: number, count: number, signal: AbortSignal): Promise<TranslationStyleReference[]> {
+    if (!count) return []
+    const references: TranslationStyleReference[] = []
     const position = record.episodes.findIndex((episode) => episode.index === index)
-    const candidates = [...record.episodes.slice(0, position).reverse(), ...record.episodes.slice(position + 1)]
+    const candidates = record.episodes.slice(0, position).reverse()
     const ref = { site: record.source.site, novelId: record.source.novelId, canonicalUrl: record.source.url, variant: null }
     for (const candidate of candidates) {
+      signal.throwIfAborted()
       const source = await this.store.read(ref, candidate.index)
       const translation = source?.translation
-      if (source && translation?.body.trim() && translation.sourceHash === hashEpisodeSource(source)) return { index: candidate.index, title: translation.title, preface: translation.preface, body: translation.body, afterword: translation.afterword }
+      if (source && translation?.body.trim() && translation.sourceHash === hashEpisodeSource(source)) references.push({ index: candidate.index, title: translation.title, preface: translation.preface, body: translation.body, afterword: translation.afterword })
+      if (references.length >= count) break
     }
-    return undefined
+    return references.reverse()
   }
   private async run(record: NovelRecord, options: TranslateEpisodesOptions, model: AiModelConfig, job: TranslationBatchJob, controller: AbortController): Promise<void> {
     const { site, novelId } = record.source
@@ -108,10 +116,11 @@ export class EpisodeTranslationService {
           const baseline = this.db.getTranslationInitialization(site, novelId)
           if (!baseline) throw new Error('翻译材料不存在，请先完成初始化')
           const requirements = [baseline.request.requirements, options.requirements].filter(Boolean).join('\n')
-          const reference = await this.styleReference(record, index)
-          job.current.referenceEpisodeIndex = reference?.index
+          const references = await this.styleReferences(record, index, options.referenceEpisodeCount!, controller.signal)
+          job.current.referenceEpisodeIndices = references.map((reference) => reference.index)
+          job.current.referenceEpisodeIndex = references.at(-1)?.index
           controller.signal.throwIfAborted()
-          const response = await translateEpisode(record, content, baseline.result, model, requirements, options.reasoningLevel, controller.signal, progress, reference)
+          const response = await translateEpisode(record, content, baseline.result, model, requirements, options.reasoningLevel, controller.signal, progress, references)
           controller.signal.throwIfAborted()
           let patched: ReturnType<typeof applyBriefOperations>
           try { patched = applyBriefOperations(baseline.result, response.value.updates, record) }
@@ -119,7 +128,7 @@ export class EpisodeTranslationService {
           const latest = await this.store.read(ref, index)
           if (!latest || hashEpisodeSource(latest) !== sourceHash) throw new Error('翻译期间原文已变化，未保存过期译文，请重试本话')
           const translatedAt = new Date().toISOString()
-          const translation = { ...response.value.translation, language: 'zh-CN' as const, translatedAt, modelId: model.id, modelName: model.name, model: response.model, sourceHash, ...(reference ? { referenceEpisodeIndex: reference.index } : {}), promptVersion: EPISODE_TRANSLATION_PROMPT_VERSION, runId: job.id, attempts: response.attempts, updates: patched.reports, warnings: patched.warnings }
+          const translation = { ...response.value.translation, language: 'zh-CN' as const, translatedAt, modelId: model.id, modelName: model.name, model: response.model, sourceHash, referenceEpisodeIndices: references.map((reference) => reference.index), referenceEpisodeCount: options.referenceEpisodeCount, ...(references.length ? { referenceEpisodeIndex: references.at(-1)!.index } : {}), promptVersion: EPISODE_TRANSLATION_PROMPT_VERSION, runId: job.id, attempts: response.attempts, updates: patched.reports, warnings: patched.warnings }
           const state: EpisodeTranslationStatus = { site, novelId, index, status: 'translated', hasTranslation: true, translatedAt, updatedAt: translatedAt, modelName: model.name, sourceHash, attempts: response.attempts, error: null, updates: patched.reports, warnings: patched.warnings }
           let written = false
           try {

@@ -21,12 +21,15 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
+import { createHash } from 'node:crypto'
+import { readingStates, summarizeReading, type ReadingProgressFilter, type ReadingProgress, type ReadingSummary, type EpisodeReading, type UpdateReading } from '../../shared/reading'
+import type { MaintenancePreview, BriefRevision } from '../../shared/brief-maintenance'
 import type { NovelRecord } from '../src/lib/types'
 import type { EpisodeTranslationStatus } from '../../shared/episode-translation'
 import type { TranslationBrief, TranslationInitialization } from '../../shared/translation'
 import type { ReasoningDialect, ReasoningLevel, ResponseProfile } from '../../shared/ai'
 
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 8
 
 export interface DbNovelRow {
   site: string
@@ -46,6 +49,7 @@ export interface DbNovelRow {
   /** 非空表示在回收站中 */
   deletedAt: string | null
   tags: string[]
+  reading: ReadingSummary
 }
 
 export type ProgressFilter = 'all' | 'none' | 'partial' | 'complete'
@@ -58,6 +62,7 @@ export interface NovelQuery {
   genre?: string
   tag?: string
   progress?: ProgressFilter
+  readingProgress?: ReadingProgressFilter
   sort?: NovelSort
   /** true = 只看回收站，false/缺省 = 只看正常作品 */
   trashed?: boolean
@@ -101,6 +106,17 @@ interface RawNovelRow {
 }
 
 const SCHEMA = `
+
+CREATE TABLE IF NOT EXISTS translation_maintenance_previews (
+  id TEXT PRIMARY KEY, site TEXT NOT NULL, novel_id TEXT NOT NULL, base_hash TEXT NOT NULL,
+  preview_json TEXT NOT NULL, created_at TEXT NOT NULL, applied_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_maintenance_book ON translation_maintenance_previews(site, novel_id);
+CREATE TABLE IF NOT EXISTS translation_brief_revisions (
+  id INTEGER PRIMARY KEY, site TEXT NOT NULL, novel_id TEXT NOT NULL, action TEXT NOT NULL,
+  before_json TEXT NOT NULL, after_json TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brief_revisions_book ON translation_brief_revisions(site, novel_id, id DESC);
 
 CREATE TABLE IF NOT EXISTS episode_translations (
   site TEXT NOT NULL,
@@ -201,6 +217,15 @@ CREATE TABLE IF NOT EXISTS episodes (
   is_revised   INTEGER NOT NULL DEFAULT 0,
   has_content  INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (novel_id, idx)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS episode_reading (
+  novel_id INTEGER NOT NULL,
+  episode_index INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('unread','reading','read')),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (novel_id, episode_index),
+  FOREIGN KEY (novel_id, episode_index) REFERENCES episodes(novel_id, idx) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 -- downloaded_count 由触发器维护，避免列表页逐行子查询
@@ -540,6 +565,8 @@ export class LibraryDb {
 
   /** 二级删除：永久移除索引（磁盘文件由调用方负责清理）。 */
   purgeNovel(site: string, novelId: string): boolean {
+    this.db.prepare('DELETE FROM translation_maintenance_previews WHERE site=? AND novel_id=?').run(site, novelId)
+    this.db.prepare('DELETE FROM translation_brief_revisions WHERE site=? AND novel_id=?').run(site, novelId)
     this.db.prepare('DELETE FROM episode_translations WHERE site = ? AND novel_id = ?').run(site, novelId)
     this.db.prepare('DELETE FROM translation_initializations WHERE site = ? AND novel_id = ?').run(site, novelId)
     const result = this.db.prepare('DELETE FROM novels WHERE site = ? AND novel_id = ?').run(site, novelId)
@@ -634,6 +661,16 @@ export class LibraryDb {
         break
     }
 
+    // Books are "reading" when started but not all episodes are read, even if
+    // the user has completed several episodes and no yellow episode remains.
+    const started = `EXISTS (SELECT 1 FROM episode_reading r JOIN episodes e ON e.novel_id=r.novel_id AND e.idx=r.episode_index WHERE r.novel_id=n.id AND r.status IN ('reading','read'))`
+    const finished = `EXISTS (SELECT 1 FROM episodes e WHERE e.novel_id=n.id) AND NOT EXISTS (SELECT 1 FROM episodes e LEFT JOIN episode_reading r ON r.novel_id=e.novel_id AND r.episode_index=e.idx WHERE e.novel_id=n.id AND (r.status IS NULL OR r.status <> 'read'))`
+    switch (query.readingProgress) {
+      case 'unread': where.push(`NOT ${started}`); break
+      case 'reading': where.push(`${started} AND NOT (${finished})`); break
+      case 'read': where.push(`(${finished})`); break
+    }
+
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
 
     const orderSql = (() => {
@@ -670,6 +707,17 @@ export class LibraryDb {
 
     // 标签单独一次查询，避免逐行子查询
     const tagsByNovel = this.tagsFor(rows.map((row) => row.id))
+    // One batched query for all visible books; no per-card API/database lookup.
+    const readingByNovel = new Map<number, EpisodeReading[]>()
+    if (rows.length) {
+      const readingRows = this.db.prepare(`SELECT e.novel_id, e.idx AS 'index', COALESCE(r.status,'unread') AS status, r.updated_at AS updatedAt
+        FROM episodes e LEFT JOIN episode_reading r ON r.novel_id=e.novel_id AND r.episode_index=e.idx
+        WHERE e.novel_id IN (${rows.map(() => '?').join(',')}) ORDER BY e.novel_id,e.idx`).all(...rows.map((row) => row.id)) as Array<EpisodeReading & { novel_id: number }>
+      for (const entry of readingRows) {
+        const list = readingByNovel.get(entry.novel_id) ?? []
+        list.push(entry); readingByNovel.set(entry.novel_id, list)
+      }
+    }
 
     return {
       total,
@@ -690,8 +738,37 @@ export class LibraryDb {
         importedAt: row.imported_at,
         deletedAt: row.deleted_at,
         tags: tagsByNovel.get(row.id) ?? [],
+        reading: summarizeReading(readingByNovel.get(row.id) ?? []),
       })),
     }
+  }
+
+  readingProgress(site: string, novelId: string): ReadingProgress | null {
+    const id = this.findId(site, novelId)
+    if (id === null) return null
+    const episodes = (this.db.prepare(`SELECT e.idx AS 'index', COALESCE(r.status,'unread') AS status, r.updated_at AS updatedAt
+      FROM episodes e LEFT JOIN episode_reading r ON r.novel_id=e.novel_id AND r.episode_index=e.idx
+      WHERE e.novel_id=? ORDER BY e.idx`).all(id) as EpisodeReading[])
+    return { ...summarizeReading(episodes), episodes }
+  }
+
+  updateReading(site: string, novelId: string, input: UpdateReading): ReadingProgress {
+    return this.db.transaction(() => {
+      const id = this.findId(site, novelId)
+      if (id === null) throw new Error('作品不存在')
+      if (!input || !readingStates.includes(input.status)) throw new Error('阅读状态无效')
+      let rows: Array<{ idx: number }>
+      if (input.scope === 'book') rows = this.db.prepare('SELECT idx FROM episodes WHERE novel_id=?').all(id) as Array<{ idx: number }>
+      else if (input.scope === 'episode' && Number.isSafeInteger(input.index) && input.index > 0) rows = this.db.prepare('SELECT idx FROM episodes WHERE novel_id=? AND idx=?').all(id, input.index) as Array<{ idx: number }>
+      else if (input.scope === 'chapter' && (input.chapterIndex === null || Number.isSafeInteger(input.chapterIndex) && input.chapterIndex > 0)) rows = this.db.prepare('SELECT idx FROM episodes WHERE novel_id=? AND chapter_idx IS ?').all(id, input.chapterIndex) as Array<{ idx: number }>
+      else throw new Error('阅读状态修改范围无效')
+      if (!rows.length) throw new Error('所选范围没有对应的话')
+      const write = this.db.prepare(`INSERT INTO episode_reading (novel_id,episode_index,status,updated_at) VALUES (?,?,?,?)
+        ON CONFLICT(novel_id,episode_index) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at`)
+      const now = new Date().toISOString()
+      for (const row of rows) write.run(id, row.idx, input.status, now)
+      return this.readingProgress(site, novelId)!
+    })()
   }
 
   /** 分类统计：状态 / 站点 / 题材 / 热门标签。只统计未删除的作品。 */
@@ -777,6 +854,44 @@ export class LibraryDb {
   invalidateEpisodeTranslation(site: string, novelId: string, index: number, sourceHash: string): void {
     const current = this.listEpisodeTranslations(site, novelId).find((item) => item.index === index)
     if (current?.hasTranslation && current.sourceHash !== sourceHash) this.saveEpisodeTranslation({ ...current, status: 'stale', updatedAt: new Date().toISOString() })
+  }
+
+  saveMaintenancePreview(site: string, novelId: string, preview: MaintenancePreview): void {
+    this.db.prepare('INSERT INTO translation_maintenance_previews (id,site,novel_id,base_hash,preview_json,created_at) VALUES (?,?,?,?,?,?)').run(preview.id, site, novelId, preview.baseHash, JSON.stringify(preview), preview.createdAt)
+    this.db.prepare('DELETE FROM translation_maintenance_previews WHERE created_at < ?').run(new Date(Date.now() - 7 * 86400000).toISOString())
+  }
+
+  listBriefRevisions(site: string, novelId: string): BriefRevision[] {
+    return (this.db.prepare('SELECT id,action,created_at,before_json,after_json FROM translation_brief_revisions WHERE site=? AND novel_id=? ORDER BY id DESC LIMIT 20').all(site, novelId) as Array<{ id: number; action: string; created_at: string; before_json: string; after_json: string }>).map((row) => ({ id: row.id, action: row.action, createdAt: row.created_at, beforeBytes: Buffer.byteLength(row.before_json), afterBytes: Buffer.byteLength(row.after_json) }))
+  }
+
+  applyMaintenancePreview(site: string, novelId: string, id: string): TranslationInitialization {
+    return this.db.transaction(() => {
+      const row = this.db.prepare('SELECT * FROM translation_maintenance_previews WHERE id=? AND site=? AND novel_id=?').get(id, site, novelId) as { base_hash: string; preview_json: string; applied_at: string | null } | undefined
+      if (!row || row.applied_at) throw new Error('预览不存在或已应用，请重新生成')
+      const current = this.getTranslationInitialization(site, novelId)
+      if (!current || createHash('sha256').update(JSON.stringify(current.result)).digest('hex') !== row.base_hash) throw new Error('材料已被翻译或其他操作更新，请重新生成预览，未覆盖新内容')
+      const preview = JSON.parse(row.preview_json) as MaintenancePreview
+      if (!preview.changes.length) throw new Error('没有可应用的修改')
+      const now = new Date().toISOString()
+      this.db.prepare('INSERT INTO translation_brief_revisions (site,novel_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?,?)').run(site, novelId, preview.mode, JSON.stringify(current.result), JSON.stringify(preview.result), now)
+      this.db.prepare('UPDATE translation_initializations SET result_json=?,updated_at=? WHERE id=?').run(JSON.stringify(preview.result), now, current.id)
+      this.db.prepare('UPDATE translation_maintenance_previews SET applied_at=? WHERE id=?').run(now, id)
+      return this.getTranslationInitialization(site, novelId)!
+    })()
+  }
+
+  restoreBriefRevision(site: string, novelId: string, id: number, baseHash: string): TranslationInitialization {
+    return this.db.transaction(() => {
+      const row = this.db.prepare('SELECT before_json FROM translation_brief_revisions WHERE id=? AND site=? AND novel_id=?').get(id, site, novelId) as { before_json: string } | undefined
+      const current = this.getTranslationInitialization(site, novelId)
+      if (!row || !current) throw new Error('历史版本不存在')
+      if (createHash('sha256').update(JSON.stringify(current.result)).digest('hex') !== baseHash) throw new Error('材料已更新，请重新读取后再恢复')
+      const now = new Date().toISOString()
+      this.db.prepare('INSERT INTO translation_brief_revisions (site,novel_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?,?)').run(site, novelId, 'restore', JSON.stringify(current.result), row.before_json, now)
+      this.db.prepare('UPDATE translation_initializations SET result_json=?,updated_at=? WHERE id=?').run(row.before_json, now, current.id)
+      return this.getTranslationInitialization(site, novelId)!
+    })()
   }
 
   getTranslationInitialization(site: string, novelId: string): TranslationInitialization | null {

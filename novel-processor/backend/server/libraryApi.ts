@@ -1,5 +1,10 @@
 /** 独立 Node HTTP 服务的书库 API，保持既有 JSON 契约。 */
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import type { ReadingProgressFilter, UpdateReading } from '../../shared/reading'
+import { randomUUID } from 'node:crypto'
+import { briefHash, briefBytes, maintainBrief, parseMaintenanceOptions } from '../src/brief-maintenance'
+import { findBriefDuplicates } from '../../shared/brief-maintenance'
+import type { MaintenancePreview } from '../../shared/brief-maintenance'
 import { dirname, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { NovelLibrary } from '../src/lib/library'
@@ -223,6 +228,73 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
         return
       }
 
+      if (segments[0] === 'library' && segments.length === 4 && segments[3] === 'reading' && (method === 'GET' || method === 'PUT')) {
+        const site = segments[1]!, novelId = segments[2]!
+        if (!db.hasNovel(site, novelId)) { sendJson(res, 404, { error: '作品不存在' }); return }
+        if (method === 'GET') { sendJson(res, 200, db.readingProgress(site, novelId)); return }
+        if (db.isTrashed(site, novelId)) { sendJson(res, 409, { error: '请先恢复本书' }); return }
+        try { sendJson(res, 200, db.updateReading(site, novelId, await readBody(req) as UpdateReading)) }
+        catch (error) { sendJson(res, 400, { error: error instanceof Error ? error.message : '阅读状态修改失败' }) }
+        return
+      }
+
+      if (segments[0] === 'library' && segments[3] === 'translation' && segments[4] === 'maintenance' && (segments.length === 5 || segments.length === 6)) {
+        const site = segments[1]!
+        const novelId = segments[2]!
+        const key = JSON.stringify([site, novelId])
+        const current = db.getTranslationInitialization(site, novelId)
+        if (!current) { sendJson(res, 409, { error: '请先初始化翻译材料' }); return }
+        if (method === 'GET' && segments.length === 5) {
+          sendJson(res, 200, { baseHash: briefHash(current.result), bytes: briefBytes(current.result), duplicates: findBriefDuplicates(current.result), revisions: db.listBriefRevisions(site, novelId) }); return
+        }
+        if (method === 'POST') {
+          if (initializationJobs.has(key)) { sendJson(res, 409, { error: '本书正在翻译或维护材料，请完成或停止后再操作' }); return }
+          if (db.isTrashed(site, novelId)) { sendJson(res, 409, { error: '请先恢复本书' }); return }
+          initializationJobs.add(key)
+          const cancellation = requestCancellation(req, res)
+          let heartbeat: ReturnType<typeof setInterval> | undefined
+          let attempts = 0
+          const emit = (event: TranslationTaskEvent) => {
+            if (res.destroyed || res.writableEnded) return
+            if (res.writableLength > 4 * 1024 * 1024) { res.destroy(); return }
+            res.write(JSON.stringify(event) + '\n')
+          }
+          try {
+            const body = await readBody(req)
+            // Refresh after acquiring the book lock: queued request bodies must not overwrite a newer baseline.
+            const baseline = db.getTranslationInitialization(site, novelId)!
+            if (segments[5] === 'apply') {
+              if (typeof body.previewId !== 'string') throw new Error('预览 ID 无效')
+              sendJson(res, 200, db.applyMaintenancePreview(site, novelId, body.previewId)); return
+            }
+            if (segments[5] === 'restore') {
+              if (!Number.isSafeInteger(body.revisionId) || typeof body.baseHash !== 'string') throw new Error('历史版本选项无效')
+              sendJson(res, 200, db.restoreBriefRevision(site, novelId, Number(body.revisionId), body.baseHash)); return
+            }
+            if (segments[5] !== 'preview') { sendJson(res, 404, { error: '接口不存在' }); return }
+            const options = parseMaintenanceOptions(body)
+            if (options.baseHash !== briefHash(baseline.result)) { sendJson(res, 409, { error: '材料已更新，请重新读取后再操作' }); return }
+            const model = db.getAiModel(options.modelId)
+            if (!model?.enabled) throw new Error('模型不存在或未启用')
+            const record = await readCatalog(site, novelId)
+            if (!record) throw new Error('作品目录不存在')
+            res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' }); res.flushHeaders()
+            emit({ type: 'started', at: Date.now(), limits: { totalTimeoutMs: DEFAULT_AI_RETRY_POLICY.totalTimeoutMs, idleTimeoutMs: DEFAULT_AI_RETRY_POLICY.requestTimeoutMs }, modelName: model.name, model: model.model, apiType: model.apiType, reasoningLevel: options.reasoningLevel ?? model.reasoningLevel, episodeCount: 0 })
+            heartbeat = setInterval(() => emit({ type: 'heartbeat', at: Date.now() }), 10000); heartbeat.unref()
+            const maintained = await maintainBrief(baseline.result, options, record, model, cancellation.signal, (event) => { if (event.type === 'attempt') attempts = event.attempt; emit(event) })
+            cancellation.signal.throwIfAborted()
+            const preview: MaintenancePreview = { id: randomUUID(), mode: options.mode, baseHash: options.baseHash, createdAt: new Date().toISOString(), beforeBytes: briefBytes(baseline.result), afterBytes: briefBytes(maintained.result), ...maintained, modelName: model.name }
+            db.saveMaintenancePreview(site, novelId, preview)
+            emit({ type: 'maintenance-preview', at: Date.now(), preview }); res.end()
+          } catch (error) {
+            const message = error instanceof Error ? error.message : '材料维护失败'
+            if (res.headersSent) { emit({ type: 'error', message, attempts, at: Date.now() }); if (!res.destroyed && !res.writableEnded) res.end() }
+            else sendJson(res, modelFailureStatus(error), { error: message })
+          } finally { if (heartbeat) clearInterval(heartbeat); cancellation.dispose(); initializationJobs.delete(key) }
+          return
+        }
+      }
+
       if (segments[0] === 'library' && segments[3] === 'translation' && segments[4] === 'episodes' && (segments.length === 5 || segments.length === 6 && segments[5] === 'stop')) {
         const site = segments[1]!
         const novelId = segments[2]!
@@ -344,6 +416,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           genre: read('genre'),
           tag: read('tag'),
           progress: (read('progress') as ProgressFilter | undefined) ?? undefined,
+          readingProgress: read('readingProgress') as ReadingProgressFilter | undefined,
           sort: (read('sort') as NovelSort | undefined) ?? undefined,
           trashed: read('trashed') === '1',
           limit,

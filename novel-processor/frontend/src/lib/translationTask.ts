@@ -1,17 +1,19 @@
 import type { TranslationTaskEvent } from '@shared/translation'
 
-export type TaskStatus = 'connecting' | 'reading' | 'preparing' | 'waiting' | 'thinking' | 'streaming' | 'retrying' | 'validating' | 'saving' | 'completed' | 'failed' | 'cancelled'
+export type TaskStatus = 'preview' | 'connecting' | 'reading' | 'preparing' | 'waiting' | 'thinking' | 'streaming' | 'retrying' | 'validating' | 'saving' | 'completed' | 'failed' | 'cancelled'
 export interface TaskAttempt { number: number; startedAt: number; finishedAt?: number; firstTokenAt?: number; characters: number; output: string; status: string }
 export interface TranslationTaskState {
   status: TaskStatus; startedAt: number; finishedAt?: number; lastEventAt: number
   referenceEpisodeIndex?: number
+  referenceEpisodeIndices?: number[]
+  referenceEpisodeCount?: number
   modelName: string; model: string; apiType: string; reasoningLevel: string; episodeCount: number
   limits?: { totalTimeoutMs: number; idleTimeoutMs: number }
   maxAttempts: number; attempts: TaskAttempt[]; retryAt?: number; jsonRepaired: boolean
   logs: Array<{ at: number; message: string; warning?: boolean }>; error?: string
 }
 export const taskStatusLabels: Record<TaskStatus, string> = {
-  connecting: '连接任务服务', reading: '读取材料', preparing: '准备提示词', waiting: '等待模型响应', thinking: '模型思考中', streaming: '正在接收输出', retrying: '等待重试', validating: '校验与修复 JSON', saving: '写入 SQLite', completed: '已完成并保存', failed: '任务失败', cancelled: '已停止',
+  preview: '预览已生成，尚未应用', connecting: '连接任务服务', reading: '读取材料', preparing: '准备提示词', waiting: '等待模型响应', thinking: '模型思考中', streaming: '正在接收输出', retrying: '等待重试', validating: '校验与修复 JSON', saving: '写入 SQLite', completed: '已完成并保存', failed: '任务失败', cancelled: '已停止',
 }
 export function newTranslationTask(input: Pick<TranslationTaskState, 'modelName' | 'model' | 'apiType' | 'reasoningLevel' | 'episodeCount'>): TranslationTaskState {
   const now = Date.now()

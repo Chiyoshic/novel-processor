@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { LibraryEntry, LibraryFacets, NovelSort, ProgressFilter } from '@/api'
 import { api } from '@/api'
+import type { ReadingProgressFilter } from '@shared/reading'
 import AppSelect from '@/components/AppSelect.vue'
 import FilterChips from '@/components/FilterChips.vue'
 import ImportPanel from '@/components/ImportPanel.vue'
@@ -26,7 +27,8 @@ const status = ref('')
 const genre = ref('')
 const site = ref('')
 const tag = ref('')
-const progress = ref('all')
+const progress = ref('')
+const readingProgress = ref('')
 const sort = ref<NovelSort>('recent')
 const activeSite = ref('')
 
@@ -34,14 +36,20 @@ const sortOptions: SelectOption[] = [
   { value: 'recent', label: '最近更新' },
   { value: 'imported', label: '最近导入' },
   { value: 'title', label: '按标题' },
-  { value: 'progress', label: '按完成度' },
+  { value: 'progress', label: '按下载进度' },
 ]
 
 const progressOptions = computed(() => [
-  { value: 'none', label: '未开始', count: 0 },
-  { value: 'partial', label: '进行中', count: 0 },
-  { value: 'complete', label: '已完整', count: 0 },
+  { value: 'none', label: '未下载', count: 0 },
+  { value: 'partial', label: '部分下载', count: 0 },
+  { value: 'complete', label: '全部下载', count: 0 },
 ])
+
+const readingProgressOptions = [
+  { value: 'unread', label: '未读', count: 0 },
+  { value: 'reading', label: '在读', count: 0 },
+  { value: 'read', label: '已读完', count: 0 },
+]
 
 const siteOptions = computed(() =>
   (facets.value?.site ?? []).map((bucket) => ({
@@ -57,7 +65,8 @@ const hasFilter = computed(
     Boolean(genre.value) ||
     Boolean(site.value) ||
     Boolean(tag.value) ||
-    progress.value !== 'all',
+    Boolean(progress.value) ||
+    Boolean(readingProgress.value),
 )
 
 const summary = computed(() => {
@@ -85,7 +94,8 @@ async function loadList(append = false): Promise<void> {
       genre: genre.value || undefined,
       site: site.value || undefined,
       tag: tag.value || undefined,
-      progress: progress.value === 'all' ? undefined : (progress.value as ProgressFilter),
+      progress: progress.value ? progress.value as ProgressFilter : undefined,
+      readingProgress: readingProgress.value ? readingProgress.value as ReadingProgressFilter : undefined,
       sort: sort.value,
       page: page.value,
       limit: 48,
@@ -115,7 +125,8 @@ function clearFilters(): void {
   genre.value = ''
   site.value = ''
   tag.value = ''
-  progress.value = 'all'
+  progress.value = ''
+  readingProgress.value = ''
 }
 
 async function handleImport(payload: { input: string; site: string }): Promise<void> {
@@ -151,7 +162,7 @@ watch(q, () => {
   searchTimer = setTimeout(resetAndLoad, 220)
 })
 
-watch([status, genre, site, tag, progress, sort], resetAndLoad)
+watch([status, genre, site, tag, progress, readingProgress, sort], resetAndLoad)
 
 onMounted(async () => {
   const list = await loadSites()
@@ -196,7 +207,8 @@ onUnmounted(() => {
 
     <section v-if="facets" class="filters">
       <FilterChips v-model="status" label="状态" :options="facets.status" />
-      <FilterChips v-model="progress" label="进度" :options="progressOptions" />
+      <FilterChips v-model="progress" label="下载进度" :options="progressOptions" />
+      <FilterChips v-model="readingProgress" label="阅读进度" :options="readingProgressOptions" />
       <FilterChips v-model="genre" label="题材" :options="facets.genre" />
       <FilterChips v-if="siteOptions.length > 1" v-model="site" label="站点" :options="siteOptions" />
       <FilterChips v-model="tag" label="标签" :options="facets.tags" />

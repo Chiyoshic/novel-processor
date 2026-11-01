@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { LibraryEntry } from '@/api'
+import ReadingStatusBar from './ReadingStatusBar.vue'
 import { detectLang } from '@/utils/lang'
 
 const props = defineProps<{ entry: LibraryEntry }>()
@@ -12,6 +13,8 @@ const percent = computed(() => {
   if (props.entry.episodeCount === 0) return 0
   return Math.round((props.entry.downloaded / props.entry.episodeCount) * 100)
 })
+
+const reading = computed(() => props.entry.reading ?? { total: props.entry.episodeCount, read: 0, reading: 0, unread: props.entry.episodeCount, percent: 0, states: '0'.repeat(props.entry.episodeCount) })
 
 const complete = computed(
   () => props.entry.episodeCount > 0 && props.entry.downloaded >= props.entry.episodeCount,
@@ -38,11 +41,16 @@ function formatNumber(n: number | null): string {
   <article class="card" tabindex="0" role="link" @click="emit('open', entry)" @keydown.enter="emit('open', entry)">
     <header class="card-top">
       <span class="chip" :class="{ 'chip--done': complete }">{{ complete ? '已下完' : statusText }}</span>
-      <span class="percent">{{ percent }}%</span>
     </header>
 
     <h3 class="card-title serif" :lang="lang">{{ entry.title }}</h3>
-    <p class="card-author">{{ entry.author || '未知作者' }}</p>
+    <div class="card-byline">
+      <span class="card-author">{{ entry.author || '未知作者' }}</span>
+      <span class="dot" aria-hidden="true">·</span>
+      <span>{{ entry.episodeCount }} 话</span>
+      <span class="dot" aria-hidden="true">·</span>
+      <span>{{ formatNumber(entry.wordCount) }} 字</span>
+    </div>
 
     <div class="card-tags">
       <span v-if="entry.genre" class="tag">{{ entry.genre }}</span>
@@ -50,15 +58,16 @@ function formatNumber(n: number | null): string {
     </div>
 
     <footer class="card-foot">
-      <div class="meta">
-        <span>{{ entry.episodeCount }} 话</span>
-        <span class="dot">·</span>
-        <span>{{ formatNumber(entry.wordCount) }} 字</span>
+      <div class="progress-summary">
+        <span>已下载 {{ entry.downloaded }} / {{ entry.episodeCount }}</span>
+        <span>{{ percent }}%</span>
+        <span>已读 {{ reading.read }} / {{ reading.total }}</span>
+        <span>{{ reading.percent }}%</span>
       </div>
       <div class="bar" aria-hidden="true">
         <span class="bar-fill" :class="{ full: complete }" :style="{ width: `${percent}%` }" />
       </div>
-      <div class="ratio">{{ entry.downloaded }} / {{ entry.episodeCount }}</div>
+      <ReadingStatusBar :progress="reading" compact />
     </footer>
   </article>
 </template>
@@ -92,12 +101,6 @@ function formatNumber(n: number | null): string {
   justify-content: space-between;
 }
 
-.percent {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--blue-dark);
-}
 
 .card-title {
   margin-top: 14px;
@@ -113,13 +116,19 @@ function formatNumber(n: number | null): string {
   overflow: hidden;
 }
 
-.card-author {
+.card-byline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   margin-top: 7px;
   font-family: var(--mono);
   font-size: 10px;
-  letter-spacing: 0.03em;
+  line-height: 1.8;
+  letter-spacing: .03em;
   color: var(--faint);
 }
+.card-author { overflow-wrap: anywhere; }
 
 .card-tags {
   display: flex;
@@ -146,14 +155,18 @@ function formatNumber(n: number | null): string {
   padding-top: 14px;
 }
 
-.meta {
+.progress-summary {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
   font-family: var(--mono);
-  font-size: 9.5px;
-  color: var(--faint);
+  font-size: 10px;
+  line-height: 1.8;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
+.progress-summary span { white-space: nowrap; }
 
 .dot {
   color: #c9d5db;
@@ -179,13 +192,6 @@ function formatNumber(n: number | null): string {
   background: #79c2ac;
 }
 
-.ratio {
-  margin-top: 7px;
-  font-family: var(--mono);
-  font-size: 9px;
-  color: #b3c0c7;
-  text-align: right;
-}
 @media (max-width: 580px) {
   .card { min-height: 0; padding: 16px; }
   .card-title { overflow-wrap: anywhere; }

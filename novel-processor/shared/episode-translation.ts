@@ -1,6 +1,9 @@
 import type { AiProgressEvent } from './ai-task'
 import type { ReasoningLevel } from './ai'
 
+export const DEFAULT_REFERENCE_EPISODE_COUNT = 1
+export const MAX_REFERENCE_EPISODE_COUNT = 50
+
 export interface TranslationStyleReference extends TranslatedArticle { index: number }
 export interface TranslatedArticle { title: string; preface: string; body: string; afterword: string }
 export interface BriefOperation {
@@ -14,7 +17,7 @@ export interface BriefOperation {
 export interface BriefOperationReport { position: number; action: string; field: string; index?: number; status: 'applied' | 'read' | 'ignored'; message: string; value?: unknown; previousValue?: unknown }
 export interface StoredEpisodeTranslation extends TranslatedArticle {
   language: 'zh-CN'; translatedAt: string; modelId: number; modelName: string; model: string
-  sourceHash: string; referenceEpisodeIndex?: number; promptVersion: string; runId: string; attempts: number
+  sourceHash: string; referenceEpisodeIndex?: number; referenceEpisodeIndices?: number[]; referenceEpisodeCount?: number; promptVersion: string; runId: string; attempts: number
   updates: BriefOperationReport[]; warnings: string[]; stale?: boolean
 }
 export type EpisodeTranslationState = 'queued' | 'translating' | 'translated' | 'failed' | 'cancelled' | 'stale'
@@ -24,13 +27,13 @@ export interface EpisodeTranslationStatus {
   attempts: number; error: string | null; warnings: string[]; updates: BriefOperationReport[]
 }
 export interface TranslateEpisodesOptions {
-  modelId: number; indices: number[]; overwrite: boolean; requirements: string; reasoningLevel?: ReasoningLevel
+  modelId: number; indices: number[]; referenceEpisodeCount?: number; overwrite: boolean; requirements: string; reasoningLevel?: ReasoningLevel
 }
 export interface TranslationBatchJob {
   id: string; limits: { totalTimeoutMs: number; idleTimeoutMs: number; maxAttempts: number }; running: boolean; stopping: boolean; startedAt: number; finishedAt: number | null
-  modelName: string; model: string; apiType: string; reasoningLevel: ReasoningLevel
+  modelName: string; model: string; apiType: string; reasoningLevel: ReasoningLevel; referenceEpisodeCount?: number
   indices: number[]; done: number[]; failed: Array<{ index: number; error: string }>; skipped: number[]; cancelled: number[]
-  current: { referenceEpisodeIndex?: number; index: number; title: string; startedAt: number; finishedAt: number | null; lastEventAt: number; events: AiProgressEvent[]; status: 'translating' | 'translated' | 'failed' | 'cancelled'; warnings: string[] } | null
+  current: { referenceEpisodeIndex?: number; referenceEpisodeIndices?: number[]; index: number; title: string; startedAt: number; finishedAt: number | null; lastEventAt: number; events: AiProgressEvent[]; status: 'translating' | 'translated' | 'failed' | 'cancelled'; warnings: string[] } | null
 }
 export interface EpisodeTranslationsResponse { episodes: EpisodeTranslationStatus[]; job: TranslationBatchJob | null }
 export const episodeTranslationLabels: Record<EpisodeTranslationState, string> = {

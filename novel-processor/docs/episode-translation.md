@@ -10,9 +10,9 @@
 - 初始化要求与本次附加要求；
 - 最新的初始化材料 baseline（上一话的补充已应用）；
 - 本话 ID、标题、前言、全文、后记；
-- 另一话的完整中文译文：优先最近的已译前一话，否则其他已有译文。过期译文不会被当作文风参考。
+- 本话之前最近 N 话的完整中文译文：界面可设置 0–50 话，默认 1，0 表示关闭。按目录位置向前选取有效译文，并按从早到晚顺序传入 `reference_translations` 数组；不足时使用实际数量，不回填本话或后续章节，跳过过期译文。串行翻译每话前重新选取，因此同批刚完成的译文也会加入后续参考。
 
-参考译文只指导文风、节奏和译名习惯，不把它的剧情或句子复制到本话；最新 baseline 优先。本话需要完整翻译，禁止摘要化、增写或输出 HTML。
+参考译文帮助理解前文承接关系，并指导文风、节奏和译名习惯，不把它的剧情或句子复制到本话；最新 baseline 优先。本话需要完整翻译，禁止摘要化、增写或输出 HTML。
 
 输出示例：
 
@@ -32,6 +32,8 @@
 
 非法指令逐条忽略并记录警告，不使有效译文失败。错误下标、错误字段、错误类型和原型路径均不能破坏材料。只对译文必需字段和 JSON 结构作检查，不核验引用原句或人物姓名。
 
+参考数量计入模型输入预算；预算不足会提示减少参考话数或更换模型，不静默截断参考译文。任务面板显示实际载入的话 ID 与实际/设定数量；每话 JSON 的 `translation.referenceEpisodeIndices` 保存完整参考列表，`referenceEpisodeCount` 保存本次设定，旧 `referenceEpisodeIndex` 保留最近一话以兼容旧记录。无需 SQLite 表结构迁移。
+
 ## 任务与存储
 
 - 后端串行执行，浏览器离开或刷新不停止。停止按钮中止当前调用并取消后续排队话。
@@ -45,7 +47,7 @@
 
 接口：
 - `GET /api/library/:site/:id/translation/episodes`：状态与当前任务快照（含真实流式增量）。
-- `POST` 同路径：`{modelId, indices, overwrite, requirements, reasoningLevel?}`。
+- `POST` 同路径：`{modelId, indices, overwrite, requirements, reasoningLevel?, referenceEpisodeCount?}`。
 - `POST .../translation/episodes/stop`：停止当前批次。
 
 阅读器的 `?language=translation` 选择译文，翻页保留语言选择；无译文时回退原文。正文使用真实 article/p 结构，保留 Safari 阅读器兼容。

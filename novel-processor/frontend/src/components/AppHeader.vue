@@ -9,9 +9,9 @@ const { user } = useAuth()
   <header class="site-header section-wrap">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-          <path d="M4 5.5h6a2 2 0 0 1 2 2V19a1.6 1.6 0 0 0-1.6-1.6H4z" />
-          <path d="M20 5.5h-6a2 2 0 0 0-2 2V19a1.6 1.6 0 0 1 1.6-1.6H20z" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 6.8C9.8 5.1 7.1 4.5 4.2 4.8c-.8.1-1.4.8-1.4 1.6v11c0 .9.7 1.5 1.5 1.4 2.8-.3 5.4.3 7.7 1.9 2.3-1.6 4.9-2.2 7.7-1.9.8.1 1.5-.5 1.5-1.4v-11c0-.8-.6-1.5-1.4-1.6-2.9-.3-5.6.3-7.8 2Z" />
+          <path d="M12 6.8v13.9" />
         </svg>
       </span>
       <span class="brand-name">novel<span>processor</span></span>
@@ -48,15 +48,15 @@ const { user } = useAuth()
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 11px;
-  background: var(--blue);
-  color: #fff;
-  box-shadow: 0 8px 18px rgb(106 158 205 / 28%);
+  flex: none;
+  background: transparent;
+  color: var(--blue-dark);
 }
 
 .brand-mark svg {
-  width: 19px;
-  height: 19px;
+  display: block;
+  width: 30px;
+  height: 30px;
 }
 
 .brand-name {
@@ -106,6 +106,8 @@ const { user } = useAuth()
   .site-header {
     height: 72px;
   }
+  .brand-mark { width: 30px; height: 30px; }
+  .brand-mark svg { width: 28px; height: 28px; }
   .brand-name {
     font-size: 15px;
   }

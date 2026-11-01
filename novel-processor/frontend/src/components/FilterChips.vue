@@ -50,7 +50,8 @@ const model = defineModel<string>({ default: '' })
 
 .filter-label {
   flex: none;
-  width: 40px;
+  width: 64px;
+  white-space: nowrap;
   padding-top: 6px;
   font-family: var(--mono);
   font-size: 10px;
@@ -68,6 +69,8 @@ const model = defineModel<string>({ default: '' })
 .chip-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 6px;
   padding: 5px 11px;
   border-radius: 999px;
@@ -111,7 +114,7 @@ const model = defineModel<string>({ default: '' })
 }
 @media (max-width: 720px) {
   .filter-row { gap: 6px; padding: 7px 0; }
-  .filter-label { width: 32px; padding-top: 7px; font-size: 10px; }
+  .filter-label { width: auto; padding-top: 7px; font-size: 10px; }
   .chips { min-width: 0; gap: 6px; }
   .chip-btn {
     height: 42px;

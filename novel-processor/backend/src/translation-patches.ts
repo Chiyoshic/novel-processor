@@ -1,6 +1,7 @@
 import type { BriefOperationReport } from '../../shared/episode-translation'
 import type { TranslationBrief } from '../../shared/translation'
 import type { NovelRecord } from './lib/types'
+import { findBriefDuplicates } from '../../shared/brief-maintenance'
 import { validateTranslationBrief } from './translation'
 
 const arrays = ['characters', 'terminology', 'worldbuilding_zh', 'address_rules_zh', 'translation_rules_zh', 'unresolved_questions_zh'] as const
@@ -40,7 +41,17 @@ export function applyBriefOperations(baseline: TranslationBrief, operations: unk
           // Test each change on a temporary snapshot so an invalid operation cannot contaminate later ones.
           const previous = structuredClone(values)
           if (target) report.previousValue = structuredClone(target.value)
-          if (action === 'create') values.push({ originalIndex: null, value: raw.value, deleted: false })
+          if (action === 'create') {
+            report.value = structuredClone(raw.value)
+            values.push({ originalIndex: null, value: raw.value, deleted: false })
+            const candidate = materialize()
+            try { validateTranslationBrief(candidate, record) } catch { slots.set(field, previous); throw new Error('修改后的字段类型或结构不合法') }
+            const finalIndex = (candidate[field as keyof TranslationBrief] as unknown[]).length - 1
+            if (findBriefDuplicates(candidate).some((group) => group.field === field && group.indices.includes(finalIndex))) {
+              slots.set(field, previous)
+              throw new Error('新增项与已有原名、别名或规则重复；请使用 update 更新已有序号，或在材料维护中由 AI 合并。未做机械覆盖')
+            }
+          }
           else if (action === 'update') target!.value = raw.value
           else target!.deleted = true
           try { validateTranslationBrief(materialize(), record) }
