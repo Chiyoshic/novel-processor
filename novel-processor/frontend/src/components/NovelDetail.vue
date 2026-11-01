@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { Episode, NovelRecord } from '@/lib'
 import type { DownloadJob } from '@/api'
-import { episodeTranslationLabels, type EpisodeTranslationStatus } from '@shared/episode-translation'
+import type { EpisodeTranslationStatus } from '@shared/episode-translation'
 import ReadingStatusBar from './ReadingStatusBar.vue'
 import ReadingStateControl from './ReadingStateControl.vue'
 import { aggregateReadingState, type ReadingProgress, type ReadingState, type UpdateReading } from '@shared/reading'
@@ -33,7 +33,6 @@ function setChapterReading(status: ReadingState, key: string): void {
 }
 const translationStates = computed(() => new Map((props.translations ?? []).map((item) => [item.index, item])))
 const translatedCount = computed(() => (props.translations ?? []).filter((item) => item.hasTranslation && item.status !== 'stale').length)
-function translationLabel(index: number): string { const state = translationStates.value.get(index); return state ? episodeTranslationLabels[state.status] : '未翻译' }
 const rangeInput = ref('')
 const concurrency = defineModel<number>('concurrency', { default: 4 })
 const collapsed = ref<Set<string>>(new Set())
@@ -297,7 +296,7 @@ watch(
               @click="emit('open', episode.index)"
             >
               <span class="ep-index">{{ String(episode.index).padStart(3, '0') }}</span>
-              <span class="ep-title serif" :lang="lang">{{ episode.title }}<span class="translation-state" :class="{ translated: translationStates.get(episode.index)?.hasTranslation }" :title="translationStates.get(episode.index)?.error ?? undefined">{{ translationLabel(episode.index) }}</span></span>
+              <span class="ep-title serif" :lang="lang">{{ episode.title }}<span v-if="translationStates.get(episode.index)?.hasTranslation" class="translation-state translated" role="img" aria-label="已翻译" title="已翻译"><span class="translation-icon" aria-hidden="true" /></span></span>
               <span class="ep-date">{{ formatDate(episode.publishedAt) }}</span>
             </button>
             <div class="episode-status-actions">
@@ -724,7 +723,8 @@ watch(
   text-align: right;
 }
 
-.translation-state { display: inline-block; vertical-align: middle; font: 10px/1.7 var(--sans); border-radius: 999px; padding: 2px 8px; background: var(--paper); color: var(--muted); margin-left: 8px; white-space: nowrap; }.translation-state.translated { color: var(--blue-dark); background: var(--blue-soft); }
+.translation-state { display: inline-flex; align-items: center; vertical-align: middle; margin-left: 8px; color: var(--blue-dark); white-space: nowrap; }
+.translation-icon { display: block; width: 17px; height: 17px; background: currentColor; -webkit-mask: url('/icons/translate.svg') center / contain no-repeat; mask: url('/icons/translate.svg') center / contain no-repeat; }
 .ep-state {
   display: flex;
   align-items: center;

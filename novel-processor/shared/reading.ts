@@ -7,6 +7,8 @@ export interface ReadingSummary {
   total: number; unread: number; reading: number; read: number; percent: number
   /** One digit per episode in directory order: 0 unread/red, 1 reading/yellow, 2 read/green. */
   states: string
+  firstEpisodeIndex?: number | null
+  furthestReadingIndex?: number | null
 }
 export interface ReadingProgress extends ReadingSummary { episodes: EpisodeReading[] }
 export type UpdateReading = { status: ReadingState } & (
@@ -14,12 +16,14 @@ export type UpdateReading = { status: ReadingState } & (
   | { scope: 'chapter'; chapterIndex: number | null }
   | { scope: 'book' }
 )
-export function summarizeReading(episodes: Pick<EpisodeReading, 'status'>[]): ReadingSummary {
+export function summarizeReading(episodes: Array<Pick<EpisodeReading, 'status'> & Partial<Pick<EpisodeReading, 'index'>>>): ReadingSummary {
   const read = episodes.filter((episode) => episode.status === 'read').length
   const reading = episodes.filter((episode) => episode.status === 'reading').length
   return { total: episodes.length, read, reading, unread: episodes.length - read - reading,
     percent: episodes.length ? Math.round(read / episodes.length * 10000) / 100 : 0,
-    states: episodes.map((episode) => episode.status === 'read' ? '2' : episode.status === 'reading' ? '1' : '0').join('') }
+    states: episodes.map((episode) => episode.status === 'read' ? '2' : episode.status === 'reading' ? '1' : '0').join(''),
+    firstEpisodeIndex: episodes[0]?.index ?? null,
+    furthestReadingIndex: episodes.reduce<number | null>((furthest, episode) => episode.status === 'reading' && episode.index !== undefined ? Math.max(furthest ?? 0, episode.index) : furthest, null) }
 }
 
 /** Mixed read/unread episodes represent an in-progress chapter/book. */

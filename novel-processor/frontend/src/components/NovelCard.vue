@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import type { LibraryEntry } from '@/api'
 import ReadingStatusBar from './ReadingStatusBar.vue'
 import { detectLang } from '@/utils/lang'
 
+const router = useRouter()
 const props = defineProps<{ entry: LibraryEntry }>()
 const emit = defineEmits<{ open: [entry: LibraryEntry] }>()
 
@@ -15,6 +17,20 @@ const percent = computed(() => {
 })
 
 const reading = computed(() => props.entry.reading ?? { total: props.entry.episodeCount, read: 0, reading: 0, unread: props.entry.episodeCount, percent: 0, states: '0'.repeat(props.entry.episodeCount) })
+
+const resumeIndex = computed(() => {
+  const summary = props.entry.reading
+  if (!summary) return null
+  if (summary.furthestReadingIndex !== undefined) return summary.furthestReadingIndex
+  // Compatibility while older API instances finish rolling out.
+  const position = summary.states.lastIndexOf('1')
+  return position >= 0 ? position + 1 : null
+})
+const readingTarget = computed(() => resumeIndex.value ?? props.entry.reading?.firstEpisodeIndex ?? 1)
+function openReader(): void {
+  if (!props.entry.episodeCount) return
+  void router.push({ name: 'reader', params: { site: props.entry.site, novelId: props.entry.novelId, index: String(readingTarget.value) } })
+}
 
 const complete = computed(
   () => props.entry.episodeCount > 0 && props.entry.downloaded >= props.entry.episodeCount,
@@ -38,9 +54,10 @@ function formatNumber(n: number | null): string {
 </script>
 
 <template>
-  <article class="card" tabindex="0" role="link" @click="emit('open', entry)" @keydown.enter="emit('open', entry)">
+  <article class="card" tabindex="0" role="link" @click="emit('open', entry)" @keydown.enter.self="emit('open', entry)">
     <header class="card-top">
       <span class="chip" :class="{ 'chip--done': complete }">{{ complete ? '已下完' : statusText }}</span>
+      <button class="pill pill--ghost pill--small card-reading-entry" type="button" :disabled="!entry.episodeCount" :title="`进入第 ${readingTarget} 话`" @click.stop="openReader" @keydown.stop>{{ resumeIndex !== null ? '继续阅读' : '开始阅读' }}<span aria-hidden="true">→</span></button>
     </header>
 
     <h3 class="card-title serif" :lang="lang">{{ entry.title }}</h3>
@@ -99,8 +116,11 @@ function formatNumber(n: number | null): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
+.card-reading-entry { margin-left: auto; min-height: 36px; padding: 8px 12px; gap: 8px; color: var(--blue-dark); white-space: nowrap; }
 
 .card-title {
   margin-top: 14px;
@@ -189,7 +209,7 @@ function formatNumber(n: number | null): string {
 }
 
 .bar-fill.full {
-  background: #79c2ac;
+  background: var(--progress-complete);
 }
 
 @media (max-width: 580px) {

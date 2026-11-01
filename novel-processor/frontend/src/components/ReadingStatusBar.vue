@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { ReadingSummary } from '@shared/reading'
 const props = withDefaults(defineProps<{ progress: ReadingSummary; compact?: boolean }>(), { compact: false })
-const colors = ['var(--reading-unread)', 'var(--reading-active)', 'var(--reading-done)']
+const colors = ['var(--reading-unread)', 'var(--reading-active)', 'var(--progress-complete)']
 // Run-length CSS gradient: exact episode positions, without thousands of DOM nodes.
 const background = computed(() => {
   const states = props.progress.states
@@ -33,5 +33,5 @@ const description = computed(() => `按话序从左到右：未读 ${props.progr
 .reading-count strong { color: var(--ink); font-weight: 600; }
 .reading-map { width: 100%; height: 6px; border-radius: 999px; margin-top: 8px; }
 .reading-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.7; }
-.reading-legend span { display: inline-flex; align-items: center; gap: 4px; }.reading-legend i { width: 6px; height: 6px; border-radius: 50%; }.unread { background: var(--reading-unread); }.active { background: var(--reading-active); }.done { background: var(--reading-done); }.reading-legend .direction { margin-left: auto; }
+.reading-legend span { display: inline-flex; align-items: center; gap: 4px; }.reading-legend i { width: 6px; height: 6px; border-radius: 50%; }.unread { background: var(--reading-unread); }.active { background: var(--reading-active); }.done { background: var(--progress-complete); }.reading-legend .direction { margin-left: auto; }
 </style>

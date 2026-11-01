@@ -155,3 +155,23 @@ test('章节/全书图标聚合：全未读为红、全部已读为绿、混合�
   assert.equal(aggregateReadingState(['read', 'unread']), 'reading')
   assert.equal(aggregateReadingState(['read', 'reading']), 'reading')
 })
+
+test('开始/继续阅读：首话定位和最远在读话不受最近更新时间或已读话干扰', () => {
+  const db = setup()
+  try {
+    assert.equal(db.listNovels().items[0]!.reading.firstEpisodeIndex, 1)
+    assert.equal(db.listNovels().items[0]!.reading.furthestReadingIndex, null)
+    db.updateReading(site, novelId, { scope: 'episode', index: 3, status: 'reading' })
+    db.updateReading(site, novelId, { scope: 'episode', index: 1, status: 'reading' })
+    db.updateReading(site, novelId, { scope: 'episode', index: 4, status: 'read' })
+    assert.equal(db.listNovels().items[0]!.reading.furthestReadingIndex, 3)
+    db.updateReading(site, novelId, { scope: 'episode', index: 3, status: 'read' })
+    assert.equal(db.listNovels().items[0]!.reading.furthestReadingIndex, 1)
+    db.updateReading(site, novelId, { scope: 'book', status: 'read' })
+    assert.equal(db.listNovels().items[0]!.reading.furthestReadingIndex, null)
+    const nonContiguous = summarizeReading([{ index: 5, status: 'unread' }, { index: 10, status: 'reading' }])
+    assert.equal(nonContiguous.firstEpisodeIndex, 5)
+    assert.equal(nonContiguous.furthestReadingIndex, 10)
+    assert.equal(summarizeReading([]).firstEpisodeIndex, null)
+  } finally { db.close() }
+})
