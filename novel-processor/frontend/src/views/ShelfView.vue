@@ -31,6 +31,12 @@ const progress = ref('')
 const readingProgress = ref('')
 const sort = ref<NovelSort>('recent')
 const activeSite = ref('')
+function savedExpansion(key: string): boolean { try { return localStorage.getItem(key) !== 'false' } catch { return true } }
+const filtersOpen = ref(savedExpansion('novel-processor.filters-open'))
+const tagsOpen = ref(savedExpansion('novel-processor.tags-open'))
+watch(filtersOpen, (value) => { try { localStorage.setItem('novel-processor.filters-open', String(value)) } catch { /* Optional preference. */ } })
+watch(tagsOpen, (value) => { try { localStorage.setItem('novel-processor.tags-open', String(value)) } catch { /* Optional preference. */ } })
+const filterCount = computed(() => [status.value, genre.value, site.value, tag.value, progress.value, readingProgress.value].filter(Boolean).length)
 
 const sortOptions: SelectOption[] = [
   { value: 'recent', label: '最近更新' },
@@ -206,12 +212,15 @@ onUnmounted(() => {
     </div>
 
     <section v-if="facets" class="filters">
+      <div class="filter-heading"><button class="filter-toggle" type="button" :aria-expanded="filtersOpen" aria-controls="shelf-filter-content" @click="filtersOpen = !filtersOpen">筛选<span v-if="filterCount"> · {{ filterCount }} 项生效</span><span aria-hidden="true">{{ filtersOpen ? '−' : '＋' }}</span></button><button v-if="filterCount" class="filter-clear" type="button" @click="clearFilters">清空筛选</button></div>
+      <div v-show="filtersOpen" id="shelf-filter-content">
       <FilterChips v-model="status" label="状态" :options="facets.status" />
       <FilterChips v-model="progress" label="下载进度" :options="progressOptions" />
       <FilterChips v-model="readingProgress" label="阅读进度" :options="readingProgressOptions" />
       <FilterChips v-model="genre" label="题材" :options="facets.genre" />
       <FilterChips v-if="siteOptions.length > 1" v-model="site" label="站点" :options="siteOptions" />
-      <FilterChips v-model="tag" label="标签" :options="facets.tags" />
+      <div v-if="facets.tags.length" class="tag-filter"><button class="filter-toggle tag-filter-toggle" type="button" :aria-expanded="tagsOpen" aria-controls="shelf-tag-filter" @click="tagsOpen = !tagsOpen">标签<span v-if="tag" class="selected-tag"> · {{ tag }}</span><span aria-hidden="true">{{ tagsOpen ? '−' : '＋' }}</span></button><div v-show="tagsOpen" id="shelf-tag-filter"><FilterChips v-model="tag" label="标签" :options="facets.tags" /></div></div>
+      </div>
     </section>
 
     <div v-if="loading && items.length === 0" class="state">
@@ -243,6 +252,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.filter-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }.filter-toggle { display: inline-flex; align-items: center; justify-content: flex-start; gap: 10px; min-height: 44px; padding: 8px 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; }.filter-toggle > span:last-child { color: var(--blue-dark); }.filter-clear { min-height: 44px; padding: 8px 0 8px 12px; background: none; color: var(--blue-dark); font-size: 12px; cursor: pointer; }.tag-filter { margin-top: 4px; }.tag-filter-toggle { max-width: 100%; }.selected-tag { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.tag-filter-toggle > span:last-child { flex: none; }
+
 .shelf {
   flex: 1;
   padding-bottom: 56px;

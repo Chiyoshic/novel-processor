@@ -15,6 +15,7 @@ export type UpdateReading = { status: ReadingState } & (
   | { scope: 'episode'; index: number }
   | { scope: 'chapter'; chapterIndex: number | null }
   | { scope: 'book' }
+  | { scope: 'range'; startIndex: number; endIndex: number }
 )
 export function summarizeReading(episodes: Array<Pick<EpisodeReading, 'status'> & Partial<Pick<EpisodeReading, 'index'>>>): ReadingSummary {
   const read = episodes.filter((episode) => episode.status === 'read').length

@@ -28,6 +28,9 @@ const readingByIndex = computed(() => new Map((props.reading?.episodes ?? []).ma
 function rangeReadingState(episodes: Episode[]): ReadingState {
   return aggregateReadingState(episodes.map((episode) => readingByIndex.value.get(episode.index) ?? 'unread'))
 }
+function setBookReading(status: ReadingState, range?: { startIndex: number; endIndex: number }): void {
+  emit('update-reading', range ? { scope: 'range', ...range, status } : { scope: 'book', status })
+}
 function setChapterReading(status: ReadingState, key: string): void {
   emit('update-reading', key === 'all' ? { scope: 'book', status } : { scope: 'chapter', chapterIndex: key === 'loose' ? null : Number(key.slice(1)), status })
 }
@@ -268,7 +271,7 @@ watch(
 
     <section class="reading-management" aria-label="阅读进度管理">
       <ReadingStatusBar v-if="reading" :progress="reading" />
-      <div class="book-reading-actions"><span>全书阅读状态</span><ReadingStateControl :status="rangeReadingState(catalog.episodes)" label="全书" :count="catalog.episodes.length" :disabled="readingSaving" @change="emit('update-reading', { scope: 'book', status: $event })" /></div>
+      <div class="book-reading-actions"><span>全书阅读状态</span><ReadingStateControl :status="rangeReadingState(catalog.episodes)" label="全书" :count="catalog.episodes.length" :episode-indices="catalog.episodes.map((episode) => episode.index)" :disabled="readingSaving" @change="setBookReading" /></div>
     </section>
     <div class="list-head">
       <span class="eyebrow eyebrow--faint">Contents</span>
@@ -296,7 +299,7 @@ watch(
               @click="emit('open', episode.index)"
             >
               <span class="ep-index">{{ String(episode.index).padStart(3, '0') }}</span>
-              <span class="ep-title serif" :lang="lang">{{ episode.title }}<span v-if="translationStates.get(episode.index)?.hasTranslation" class="translation-state translated" role="img" aria-label="已翻译" title="已翻译"><span class="translation-icon" aria-hidden="true" /></span></span>
+              <span class="ep-title serif" :lang="lang"><span class="ep-title-text" :title="episode.title">{{ episode.title }}</span><span v-if="translationStates.get(episode.index)?.hasTranslation" class="translation-state translated" role="img" aria-label="已翻译" title="已翻译"><span class="translation-icon" aria-hidden="true" /></span></span>
               <span class="ep-date">{{ formatDate(episode.publishedAt) }}</span>
             </button>
             <div class="episode-status-actions">
@@ -704,9 +707,17 @@ watch(
 }
 
 .ep-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--muted);
+}
+.ep-title-text {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -723,7 +734,7 @@ watch(
   text-align: right;
 }
 
-.translation-state { display: inline-flex; align-items: center; vertical-align: middle; margin-left: 8px; color: var(--blue-dark); white-space: nowrap; }
+.translation-state { display: inline-flex; align-items: center; flex: 0 0 17px; width: 17px; color: var(--blue-dark); white-space: nowrap; }
 .translation-icon { display: block; width: 17px; height: 17px; background: currentColor; -webkit-mask: url('/icons/translate.svg') center / contain no-repeat; mask: url('/icons/translate.svg') center / contain no-repeat; }
 .ep-state {
   display: flex;

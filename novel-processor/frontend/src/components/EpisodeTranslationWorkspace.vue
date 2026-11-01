@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { selectEpisodeRange, selectFirstUntranslated } from '@shared/episode-selection'
 import { api, type AiModelConfig } from '@/api'
 import type { NovelRecord } from '@/lib'
-import type { EpisodeTranslationsResponse, EpisodeTranslationStatus } from '@shared/episode-translation'
-import { DEFAULT_REFERENCE_EPISODE_COUNT, MAX_REFERENCE_EPISODE_COUNT, episodeTranslationLabels } from '@shared/episode-translation'
+import type { EpisodeTranslationsResponse } from '@shared/episode-translation'
+import { DEFAULT_REFERENCE_EPISODE_COUNT, MAX_REFERENCE_EPISODE_COUNT } from '@shared/episode-translation'
 import type { TranslationInitialization } from '@shared/translation'
 import { reasoningLevels, type ReasoningLevel } from '@shared/ai'
 import TranslationTaskPanel from './TranslationTaskPanel.vue'
@@ -21,6 +22,36 @@ const snapshot = ref<EpisodeTranslationsResponse>({ episodes: [], job: null })
 const downloaded = ref(new Set<number>())
 const selected = ref(new Set<number>())
 const filter = ref('all')
+const chapterListId = useId()
+const collapsedChapters = ref(new Set<number>())
+function toggleChapter(index: number): void {
+  const next = new Set(collapsedChapters.value)
+  if (next.has(index)) next.delete(index)
+  else next.add(index)
+  collapsedChapters.value = next
+}
+const rangeStart = ref<number | string>(props.catalog.episodes[0]?.index ?? 1)
+const rangeEnd = ref<number | string>(props.catalog.episodes.at(-1)?.index ?? 1)
+const pendingCount = ref<number | string>(10)
+const selectionMessage = ref('')
+function selectRange(): void {
+  if (running.value || submitting.value) return
+  try {
+    const indices = selectEpisodeRange(props.catalog.episodes.map((episode) => episode.index), allowedIndices.value, Number(rangeStart.value), Number(rangeEnd.value))
+    if (indices.length > 1000) throw new Error('每批最多 1000 话，请缩小范围')
+    selected.value = new Set(indices); filter.value = 'all'
+    selectionMessage.value = `已选范围内 ${indices.length} 话；未下载及不允许重译的话已跳过。`
+  } catch (error) { selectionMessage.value = error instanceof Error ? error.message : '范围无效' }
+}
+function selectPending(): void {
+  if (running.value || submitting.value) return
+  try {
+    const translated = new Set(snapshot.value.episodes.filter((episode) => episode.hasTranslation && episode.status !== 'stale').map((episode) => episode.index))
+    const indices = selectFirstUntranslated(props.catalog.episodes.map((episode) => episode.index), downloaded.value, translated, Number(pendingCount.value))
+    selected.value = new Set(indices); filter.value = 'all'
+    selectionMessage.value = indices.length ? `已选第 ${indices[0]} 话起的 ${indices.length} 话${indices.length < Number(pendingCount.value) ? '，可用未译话数不足，已全部选择' : ''}。` : '暂无已下载且需要翻译的话。'
+  } catch (error) { selectionMessage.value = error instanceof Error ? error.message : '数量无效' }
+}
 const form = ref({ modelId: 0, referenceEpisodeCount: DEFAULT_REFERENCE_EPISODE_COUNT, overwrite: false, requirements: '', reasoningLevel: 'inherit' as ReasoningLevel | 'inherit' })
 const model = computed(() => models.value.find((item) => item.id === form.value.modelId))
 const levels = computed(() => reasoningLevels(model.value?.reasoningDialect ?? 'none'))
@@ -63,7 +94,6 @@ const task = computed<TranslationTaskState | null>(() => {
 let poll: ReturnType<typeof setTimeout> | undefined
 let alive = true
 let seenCompleted = ''
-function statusLabel(value?: EpisodeTranslationStatus): string { return value ? episodeTranslationLabels[value.status] : '未翻译' }
 function allowed(index: number): boolean { return allowedIndices.value.has(index) }
 function toggle(index: number): void { const value = new Set(selected.value); if (value.has(index)) value.delete(index); else value.add(index); selected.value = value }
 function selectGroup(indices: number[]): void { const value = new Set(selected.value); const allowedIndices = indices.filter(allowed); const remove = allowedIndices.every((index) => value.has(index)); for (const index of allowedIndices) { if (remove) value.delete(index); else value.add(index) }; selected.value = value }
@@ -121,12 +151,30 @@ onUnmounted(() => { alive = false; if (poll) clearTimeout(poll) })
     <template v-else>
       <p v-if="!baseline" class="notice">请先完成第一步的初始化翻译材料。</p>
       <p v-if="error" class="notice error" role="alert">{{ error }} <button class="pill pill--ghost pill--small" type="button" @click="load">重新读取</button></p>
-      <form @submit.prevent="start">
+      <form id="episode-translation-config" @submit.prevent="start">
         <fieldset :disabled="running || submitting || !baseline"><div class="form-grid"><label>翻译模型<select v-model.number="form.modelId"><option :value="0" disabled>请选择模型</option><option v-for="item in models" :key="item.id" :value="item.id">{{ item.name }} · {{ item.model }}</option></select></label><label>思考等级<select v-model="form.reasoningLevel"><option value="inherit">沿用模型配置（{{ model?.reasoningLevel ?? 'default' }}）</option><option v-for="level in levels" :key="level" :value="level">{{ level }}</option></select></label><label>最近译文参考数量<input v-model.number="form.referenceEpisodeCount" type="number" min="0" :max="MAX_REFERENCE_EPISODE_COUNT" step="1" required /><small>本话之前最近的已译话数，0 为关闭；不足时使用实际数量，跳过过期译文。</small></label></div><label>本次附加要求<textarea v-model="form.requirements" rows="2" maxlength="10000" placeholder="可选，默认沿用初始化翻译要求" /></label><label class="check-label"><input v-model="form.overwrite" type="checkbox" />允许重新翻译已有译文</label></fieldset>
-        <div class="selection-toolbar"><div class="selection-actions"><button class="pill pill--ghost pill--small" type="button" :disabled="running" @click="selected = new Set(selectable.map((episode) => episode.index))">全选可翻译</button><button class="pill pill--ghost pill--small" type="button" :disabled="running" @click="selected = new Set()">清空选择</button><span>已选 {{ selected.size }} 话 · 按目录顺序串行</span></div><label class="filter-label">筛选<select v-model="filter"><option value="all">全部章节</option><option value="pending">未翻译</option><option value="translated">已有译文</option><option value="failed">翻译失败</option></select></label></div>
-        <div class="chapter-list"><section v-for="group in groups" :key="group.index" class="chapter-group"><header><h3>{{ group.title }}</h3><button class="pill pill--ghost pill--small" type="button" :disabled="running" @click="selectGroup(group.episodes.map((episode) => episode.index))">选择本章</button></header><label v-for="episode in group.episodes" :key="episode.index" class="episode-row" :class="{ selected: selected.has(episode.index) }"><input type="checkbox" :checked="selected.has(episode.index)" :disabled="running || !allowed(episode.index)" @change="toggle(episode.index)" /><span class="episode-number">{{ episode.index }}</span><span class="episode-title">{{ episode.title }}<small v-if="statuses.get(episode.index)?.error">{{ statuses.get(episode.index)?.error }}</small></span><span class="state-badge">{{ !downloaded.has(episode.index) ? '未下载' : statusLabel(statuses.get(episode.index)) }}</span><RouterLink v-if="statuses.get(episode.index)?.hasTranslation" class="read-link" :to="{ name: 'reader', params: { site: catalog.source.site, novelId: catalog.source.novelId, index: episode.index }, query: { language: 'translation' } }" @click.stop>译文 ↗</RouterLink></label></section><p v-if="!groups.length" class="empty">没有匹配的章节。</p></div>
-        <div class="submit-row"><button class="pill" type="submit" :disabled="!baseline || !selected.size || !model || running || submitting">{{ submitting ? '正在创建任务…' : `开始翻译 ${selected.size} 话` }}</button><p class="hint">任务在后端串行执行，离开页面不中断；每话完成即保存，失败的话不影响后续。</p></div>
       </form>
+      <div>
+        <fieldset class="quick-selection" :disabled="running || submitting || !baseline"><legend>快捷选话</legend><div class="quick-range"><label>起始话号<input v-model.number="rangeStart" @keydown.enter.prevent="selectRange" type="number" min="1" step="1" /></label><label>结束话号<input v-model.number="rangeEnd" @keydown.enter.prevent="selectRange" type="number" min="1" step="1" /></label><button class="pill" type="button" @click="selectRange">选择范围</button></div><div class="quick-pending"><label>从最小未译话号开始<input v-model.number="pendingCount" @keydown.enter.prevent="selectPending" type="number" min="1" max="1000" step="1" /></label><button class="pill" type="button" @click="selectPending">选择未译话</button></div><p>快捷选择替换当前勾选，仅选择已下载的话；过期译文视为待译。</p><p v-if="selectionMessage" role="status">{{ selectionMessage }}</p></fieldset>
+        <div class="selection-toolbar"><div class="selection-actions"><button class="pill pill--ghost pill--small" type="button" :disabled="running" @click="selected = new Set(selectable.map((episode) => episode.index))">全选可翻译</button><button class="pill pill--ghost pill--small" type="button" :disabled="running" @click="selected = new Set()">清空选择</button><span>已选 {{ selected.size }} 话 · 按目录顺序串行</span></div><label class="filter-label">筛选<select v-model="filter"><option value="all">全部章节</option><option value="pending">未翻译</option><option value="translated">已有译文</option><option value="failed">翻译失败</option></select></label></div>
+        <div class="chapter-list">
+          <section v-for="group in groups" :key="group.index" class="chapter-group">
+            <header><h3><button class="chapter-toggle" type="button" :aria-expanded="!collapsedChapters.has(group.index)" :aria-controls="`${chapterListId}-${group.index}`" @click="toggleChapter(group.index)"><span class="chapter-caret" :class="{ expanded: !collapsedChapters.has(group.index) }" aria-hidden="true">▸</span><span>{{ group.title }}</span><small>{{ group.episodes.length }} 话<span v-if="group.episodes.some((episode) => selected.has(episode.index))"> · 已选 {{ group.episodes.filter((episode) => selected.has(episode.index)).length }}</span></small></button></h3><button class="pill pill--ghost pill--small" type="button" :disabled="running" @click="selectGroup(group.episodes.map((episode) => episode.index))">选择本章</button></header>
+            <div v-show="!collapsedChapters.has(group.index)" :id="`${chapterListId}-${group.index}`">
+            <div v-for="episode in group.episodes" :key="episode.index" class="episode-row" :class="{ selected: selected.has(episode.index) }">
+              <label class="episode-selection" :title="!downloaded.has(episode.index) ? '正文尚未下载' : undefined">
+                <input type="checkbox" :checked="selected.has(episode.index)" :disabled="running || !allowed(episode.index)" @change="toggle(episode.index)" />
+                <span class="episode-number">{{ episode.index }}</span>
+                <span class="episode-title">{{ episode.title }}<small v-if="statuses.get(episode.index)?.error">{{ statuses.get(episode.index)?.error }}</small></span>
+              </label>
+              <RouterLink v-if="statuses.get(episode.index)?.hasTranslation" class="translation-icon-link" :aria-label="`阅读第 ${episode.index} 话译文`" title="阅读译文" :to="{ name: 'reader', params: { site: catalog.source.site, novelId: catalog.source.novelId, index: episode.index }, query: { language: 'translation' } }" @click.stop><span class="translation-icon" aria-hidden="true" /></RouterLink>
+            </div>
+            </div>
+          </section>
+          <p v-if="!groups.length" class="empty">没有匹配的章节。</p>
+        </div>
+        <div class="submit-row"><button class="pill" type="submit" form="episode-translation-config" :disabled="!baseline || !selected.size || !model || running || submitting">{{ submitting ? '正在创建任务…' : `开始翻译 ${selected.size} 话` }}</button><p class="hint">任务在后端串行执行，离开页面不中断；每话完成即保存，失败的话不影响后续。</p></div>
+      </div>
       <section v-if="job" class="batch-summary"><div class="batch-heading"><h3>{{ job.running ? `正在翻译 · 第 ${job.current?.index ?? '—'} 话` : '本次任务已结束' }}</h3><button v-if="job.running" class="pill pill--ghost pill--small" type="button" :disabled="stopping || job.stopping" @click="stop">{{ job.stopping || stopping ? '正在停止…' : '停止批量任务' }}</button></div><progress :value="settled" :max="job.indices.length" /><div class="batch-counts"><span>完成 {{ job.done.length }}</span><span>失败 {{ job.failed.length }}</span><span>跳过 {{ job.skipped.length }}</span><span>停止 {{ job.cancelled.length }}</span><span>{{ settled }} / {{ job.indices.length }}</span></div><ul v-if="job.failed.length" class="failures"><li v-for="item in job.failed" :key="item.index">第 {{ item.index }} 话：{{ item.error }}</li></ul></section>
       <TranslationTaskPanel v-if="task" :task="task" :title="`第 ${job?.current?.index} 话 · 实时翻译`" @cancel="stop" />
       <section v-if="warnings.length" class="updates-section"><h3>翻译材料变更</h3><details v-for="item in warnings" :key="item.index"><summary>第 {{ item.index }} 话 · 应用 {{ item.updates.filter((update) => update.status === 'applied').length }} 条 · 忽略 {{ item.updates.filter((update) => update.status === 'ignored').length }} 条</summary><ul><li v-for="(warning, index) in item.warnings" :key="`warning-${index}`" class="warning">{{ warning }}</li><li v-for="update in item.updates" :key="update.position">#{{ update.position + 1 }} · {{ update.field }}{{ update.index !== undefined ? `[${update.index}]` : '' }} · {{ update.action }} · {{ update.message }}</li></ul></details></section>
@@ -135,12 +183,17 @@ onUnmounted(() => { alive = false; if (poll) clearTimeout(poll) })
 </template>
 
 <style scoped>
+.chapter-group > header h3 { flex: 1; min-width: 0; }.chapter-toggle { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 6px 10px; width: 100%; min-height: 40px; padding: 4px 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }.chapter-toggle > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }.chapter-caret { display: inline-block; flex: none; color: var(--muted); transition: transform .18s ease; }.chapter-caret.expanded { transform: rotate(90deg); }.chapter-toggle small { color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.8; }.chapter-group > header > .pill { flex-shrink: 0; }
+
+.quick-selection { margin-top: 24px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); }.quick-selection legend { padding: 0 8px; color: var(--muted); font-size: 13px; }.quick-range { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; align-items: end; gap: 12px; }.quick-pending { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }.quick-pending label { flex: 1; min-width: 150px; }.quick-selection p { color: var(--muted); font-size: 12px; line-height: 1.9; }
+@media(max-width:580px) { .quick-range { grid-template-columns: repeat(2,minmax(0,1fr)); }.quick-range > button { grid-column: 1 / -1; }.quick-selection { padding: 14px 12px; } }
+
 .episode-workspace { min-width: 0; background: var(--white); color: var(--ink); padding: 28px; border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); }
-.workspace-head, .batch-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }h2 { font-size: 23px; margin-top: 8px; }h3 { font-size: 15px; line-height: 1.7; }.total-chip, .state-badge { padding: 5px 11px; border-radius: 999px; font-size: 12px; background: var(--blue-soft); color: var(--blue-dark); white-space: nowrap; }
+.workspace-head, .batch-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }h2 { font-size: 23px; margin-top: 8px; }h3 { font-size: 15px; line-height: 1.7; }.total-chip { padding: 5px 11px; border-radius: 999px; font-size: 12px; background: var(--blue-soft); color: var(--blue-dark); white-space: nowrap; }
 form { margin-top: 24px; }fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 16px; min-width: 0; }label { font-size: 12px; color: var(--muted); }fieldset label { display: grid; gap: 8px; }.form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }select, textarea, input[type=number] { width: 100%; min-width: 0; background: var(--paper); color: var(--ink); border: 1px solid var(--line); padding: 12px; border-radius: 14px; font: inherit; font-size: 14px; }textarea { resize: vertical; }fieldset small { line-height: 1.8; font-size: 11px; color: var(--muted); }fieldset .check-label { display: flex; align-items: center; gap: 8px; }input[type=checkbox] { accent-color: var(--blue-dark); width: 16px; height: 16px; flex-shrink: 0; }
 .selection-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: 24px 0 14px; }.selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }.selection-actions > span { font-size: 12px; color: var(--muted); }.filter-label { display: flex; align-items: center; gap: 8px; }.filter-label select { width: auto; min-height: 40px; padding: 8px 12px; }
-.chapter-list { max-height: 560px; overflow: auto; border: 1px solid var(--line); border-radius: 20px; }.chapter-group + .chapter-group { border-top: 1px solid var(--line); }.chapter-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: var(--paper); }.episode-row { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-top: 1px solid var(--line); cursor: pointer; }.episode-row.selected { background: var(--blue-soft); }.episode-number { font-size: 12px; min-width: 24px; font-variant-numeric: tabular-nums; }.episode-title { flex: 1; min-width: 0; color: var(--ink); font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }.episode-title small { display: block; font-size: 11px; color: var(--muted); }.state-badge { font-size: 11px; padding: 3px 9px; }.read-link { color: var(--blue-dark); white-space: nowrap; font-size: 12px; }
+.chapter-list { max-height: 560px; overflow: auto; border: 1px solid var(--line); border-radius: 20px; }.chapter-group + .chapter-group { border-top: 1px solid var(--line); }.chapter-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: var(--paper); }.episode-row { display: flex; align-items: center; gap: 10px; padding: 2px 16px; border-top: 1px solid var(--line); cursor: pointer; }.episode-selection { display: flex; align-items: center; flex: 1; min-width: 0; gap: 10px; min-height: 44px; cursor: pointer; }.episode-row.selected { background: var(--blue-soft); }.episode-number { font-size: 12px; min-width: 24px; font-variant-numeric: tabular-nums; }.episode-title { flex: 1; min-width: 0; color: var(--ink); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }.episode-title small { display: block; font-size: 11px; color: var(--muted); }.translation-icon-link { display: inline-grid; place-items: center; flex: 0 0 32px; width: 32px; height: 44px; border-radius: 10px; color: var(--blue-dark); }.translation-icon-link:hover { background: var(--blue-soft); }.translation-icon-link:focus-visible { outline: 2px solid var(--blue-dark); outline-offset: 2px; }.translation-icon { display: block; width: 17px; height: 17px; background: currentColor; -webkit-mask: url('/icons/translate.svg') center / contain no-repeat; mask: url('/icons/translate.svg') center / contain no-repeat; }
 .submit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 20px; }.hint { font-size: 12px; line-height: 1.8; color: var(--muted); flex: 1; min-width: 180px; }.notice { padding: 14px; background: var(--blue-soft); border-radius: 14px; margin-top: 18px; font-size: 13px; line-height: 1.8; }.empty { padding: 32px; font-size: 13px; color: var(--muted); text-align: center; }
 .batch-summary { border: 1px solid var(--blue-line); background: var(--paper); padding: 20px; border-radius: 20px; margin-top: 24px; }progress { width: 100%; height: 8px; margin: 18px 0 12px; accent-color: var(--blue-dark); }.batch-counts { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 12px; color: var(--muted); }.failures, .updates-section ul { padding-left: 18px; font-size: 12px; line-height: 1.9; margin-top: 12px; }.updates-section { margin-top: 24px; }.updates-section details { margin-top: 12px; padding: 12px 16px; border: 1px solid var(--line); background: var(--paper); border-radius: 16px; }summary { cursor: pointer; font-size: 13px; line-height: 1.8; }.warning { color: var(--blue-dark); }
-@media(max-width:720px) { .episode-workspace { padding: 22px 16px; }.form-grid { grid-template-columns: 1fr; }select,textarea,input[type=number] { font-size: 16px; }.episode-row { flex-wrap: wrap; padding: 12px; gap: 8px; }.episode-title { flex-basis: calc(100% - 70px); }.state-badge { margin-left: 50px; }.read-link { margin-left: auto; }.chapter-group > header { padding: 12px; }.submit-row > button { width: 100%; justify-content: center; }.batch-summary { padding: 16px; } }
+@media(max-width:720px) { .episode-workspace { padding: 22px 16px; }.form-grid { grid-template-columns: 1fr; }select,textarea,input[type=number] { font-size: 16px; }.episode-row { padding: 2px 12px; gap: 8px; }.episode-selection { gap: 8px; }.chapter-group > header { padding: 8px 12px; }.submit-row > button { width: 100%; justify-content: center; }.batch-summary { padding: 16px; } }
 </style>

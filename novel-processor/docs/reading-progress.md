@@ -37,6 +37,8 @@ Schema v8 非破坏性增加 `episode_reading`，主键 `(novel_id, episode_inde
 鉴权沿用所有业务 API：
 
 - `GET /api/library/:site/:novelId/reading`：`{episodes:[{index,status,updatedAt}],total,unread,reading,read,percent,states}`。
+- 全书编辑弹窗可输入起始/结束话号（包含两端），实时预览影响话数；“选择全书”恢复完整范围。范围之外的阅读状态不变，越界/倒序/非整数会被拒绝。
+- `PUT` 同路径新增 `{scope:'range',startIndex,endIndex,status}`，与全书、按章、单话接口共用事务和鉴权。
 - `PUT` 同路径：`{scope:'episode',index,status}`、`{scope:'chapter',chapterIndex,status}`（`null` 指未分章话）或 `{scope:'book',status}`。范围校验后事务写入，返回最新汇总。
 - `GET /api/library` 的每个条目新增 `reading` 汇总；`states` 每个字符表示一话，`0/1/2` 分别是未读/在读/已读，按话序排列。分页列表一次批量查询，前端状态条采用合并连续颜色的 CSS 渐变，避免为数千话创建数千个 DOM 节点。
 

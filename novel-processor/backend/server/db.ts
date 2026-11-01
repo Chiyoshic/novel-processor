@@ -21,6 +21,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
+import { validEpisodeRange } from '../../shared/episode-selection'
 import { createHash } from 'node:crypto'
 import { readingStates, summarizeReading, type ReadingProgressFilter, type ReadingProgress, type ReadingSummary, type EpisodeReading, type UpdateReading } from '../../shared/reading'
 import type { MaintenancePreview, BriefRevision } from '../../shared/brief-maintenance'
@@ -759,6 +760,12 @@ export class LibraryDb {
       if (!input || !readingStates.includes(input.status)) throw new Error('阅读状态无效')
       let rows: Array<{ idx: number }>
       if (input.scope === 'book') rows = this.db.prepare('SELECT idx FROM episodes WHERE novel_id=?').all(id) as Array<{ idx: number }>
+      else if (input.scope === 'range') {
+        if (!validEpisodeRange(input.startIndex, input.endIndex)) throw new Error('起止话号须为正整数，结束话号不能小于起始话号')
+        const bounds = this.db.prepare('SELECT MIN(idx) AS first, MAX(idx) AS last FROM episodes WHERE novel_id=?').get(id) as { first: number | null; last: number | null }
+        if (bounds.first === null || bounds.last === null || input.startIndex < bounds.first || input.endIndex > bounds.last) throw new Error('阅读范围超出当前目录')
+        rows = this.db.prepare('SELECT idx FROM episodes WHERE novel_id=? AND idx BETWEEN ? AND ?').all(id, input.startIndex, input.endIndex) as Array<{ idx: number }>
+      }
       else if (input.scope === 'episode' && Number.isSafeInteger(input.index) && input.index > 0) rows = this.db.prepare('SELECT idx FROM episodes WHERE novel_id=? AND idx=?').all(id, input.index) as Array<{ idx: number }>
       else if (input.scope === 'chapter' && (input.chapterIndex === null || Number.isSafeInteger(input.chapterIndex) && input.chapterIndex > 0)) rows = this.db.prepare('SELECT idx FROM episodes WHERE novel_id=? AND chapter_idx IS ?').all(id, input.chapterIndex) as Array<{ idx: number }>
       else throw new Error('阅读状态修改范围无效')

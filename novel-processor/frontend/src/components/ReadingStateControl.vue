@@ -1,23 +1,32 @@
 <script setup lang="ts">
-import { nextTick, ref, useId } from 'vue'
+import { computed, nextTick, ref, useId } from 'vue'
+import { validEpisodeRange } from '@shared/episode-selection'
 import { readingLabels, readingStates, type ReadingState } from '@shared/reading'
-const props = withDefaults(defineProps<{ status: ReadingState; label: string; count?: number; disabled?: boolean; compact?: boolean }>(), { count: 1, disabled: false, compact: false })
-const emit = defineEmits<{ change: [status: ReadingState] }>()
+const props = withDefaults(defineProps<{ status: ReadingState; label: string; count?: number; disabled?: boolean; compact?: boolean; episodeIndices?: number[] }>(), { count: 1, disabled: false, compact: false })
+const emit = defineEmits<{ change: [status: ReadingState, range?: { startIndex: number; endIndex: number }] }>()
 const headingId = useId()
 const dialog = ref<HTMLDialogElement>()
 const open = ref(false)
 const selected = ref<ReadingState>('unread')
+const startIndex = ref<number | string>(1)
+const endIndex = ref<number | string>(1)
+const indices = computed(() => [...new Set(props.episodeIndices ?? [])].sort((a,b) => a-b))
+const validRange = computed(() => !props.episodeIndices || validEpisodeRange(startIndex.value, endIndex.value) && Number(startIndex.value) >= (indices.value[0] ?? 1) && Number(endIndex.value) <= (indices.value.at(-1) ?? 0))
+const affectedCount = computed(() => props.episodeIndices ? validRange.value ? indices.value.filter((index) => index >= Number(startIndex.value) && index <= Number(endIndex.value)).length : 0 : props.count)
+function selectWholeBook(): void { startIndex.value = indices.value[0] ?? 1; endIndex.value = indices.value.at(-1) ?? 1 }
+
 async function show(): Promise<void> {
   if (props.disabled || !props.count) return
   selected.value = props.status
+  selectWholeBook()
   open.value = true
   await nextTick()
   dialog.value?.showModal()
 }
 function close(): void { dialog.value?.close(); open.value = false }
 function apply(): void {
-  if (props.disabled) return
-  emit('change', selected.value)
+  if (props.disabled || !validRange.value || !affectedCount.value) return
+  emit('change', selected.value, props.episodeIndices ? { startIndex: Number(startIndex.value), endIndex: Number(endIndex.value) } : undefined)
   close()
 }
 function backdrop(event: MouseEvent): void {
@@ -31,9 +40,10 @@ function backdrop(event: MouseEvent): void {
   <button class="reading-state-trigger" :class="[`state-${status}`, { compact }]" type="button" :disabled="disabled || !count" :aria-label="`${label}：${readingLabels[status]}，点击编辑阅读状态`" :title="`${label}：${readingLabels[status]}，点击编辑`" aria-haspopup="dialog" :aria-expanded="open" @click.stop="show"><span class="reading-state-icon" aria-hidden="true" /></button>
   <dialog v-if="open" ref="dialog" class="reading-state-dialog" :aria-labelledby="headingId" @cancel.prevent="close" @close="open = false" @click="backdrop">
     <header><div><h2 :id="headingId">编辑阅读状态</h2><p>{{ label }}<span v-if="count > 1"> · {{ count }} 话</span></p></div><button class="close-button" type="button" aria-label="关闭阅读状态编辑" @click="close">×</button></header>
-    <p v-if="count > 1" class="batch-note">将统一修改此范围内全部 {{ count }} 话的阅读状态。</p>
+    <fieldset v-if="episodeIndices" class="reading-range" :disabled="disabled"><legend>编辑话数范围</legend><div><label>起始话号<input v-model.number="startIndex" type="number" :min="indices[0] ?? 1" :max="indices.at(-1)" step="1" /></label><label>结束话号<input v-model.number="endIndex" type="number" :min="indices[0] ?? 1" :max="indices.at(-1)" step="1" /></label></div><button type="button" @click="selectWholeBook">选择全书</button><p v-if="!validRange" role="alert">请输入目录范围内的有效起止话号。</p></fieldset>
+    <p v-if="count > 1 || episodeIndices" class="batch-note">将统一修改所选范围内 {{ affectedCount }} 话的阅读状态。</p>
     <div class="reading-state-options" role="group" aria-label="选择阅读状态"><button v-for="state in readingStates" :key="state" type="button" :class="[`state-${state}`, { selected: selected === state }]" :aria-pressed="selected === state" :disabled="disabled" @click="selected = state"><span class="reading-state-icon" aria-hidden="true" /><span>{{ readingLabels[state] }}</span></button></div>
-    <footer><button class="pill pill--ghost pill--small" type="button" @click="close">取消</button><button class="pill pill--small" type="button" :disabled="disabled" @click="apply">确认修改</button></footer>
+    <footer><button class="pill pill--ghost pill--small" type="button" @click="close">取消</button><button class="pill pill--small" type="button" :disabled="disabled || !validRange || !affectedCount" @click="apply">确认修改</button></footer>
   </dialog>
 </template>
 
@@ -59,6 +69,7 @@ function backdrop(event: MouseEvent): void {
 .reading-state-options button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 18px 8px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
 .reading-state-options button.selected { border-color: var(--state-ink); box-shadow: inset 0 0 0 1px var(--state-ink); }
 .reading-state-options .reading-state-icon { width: 28px; height: 28px; }
+.reading-range { border: 0; padding: 0; margin: 20px 0 0; min-width: 0; }.reading-range legend { padding: 0; margin-bottom: 10px; font-size: 13px; }.reading-range > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }.reading-range label { display: grid; gap: 7px; font-size: 12px; color: var(--muted); }.reading-range input { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); color: var(--ink); font: inherit; font-size: 16px; }.reading-range > button { margin-top: 10px; padding: 8px 0; background: none; color: var(--blue-dark); font-size: 13px; cursor: pointer; }
 .reading-state-dialog footer { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
 @media (max-width: 480px) { .reading-state-dialog { padding: 20px 16px; }.reading-state-options { gap: 8px; } }
 </style>

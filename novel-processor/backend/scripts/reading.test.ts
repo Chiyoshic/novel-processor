@@ -113,6 +113,9 @@ test('HTTP 阅读状态 GET/PUT、批量范围、错误码与书架汇总', asyn
     assert.equal(filtered.total, 1)
     const notFinished = await (await fetch(base + '/library?readingProgress=read')).json() as { total: number }
     assert.equal(notFinished.total, 0)
+    const ranged = await put({ scope: 'range', startIndex: 2, endIndex: 3, status: 'reading' })
+    assert.equal(ranged.status, 200); assert.equal((await ranged.json() as ReadingProgress).states, '2110')
+    assert.equal((await put({ scope: 'range', startIndex: 3, endIndex: 2, status: 'read' })).status, 400)
     assert.equal((await put({ scope: 'book', status: 'invalid' })).status, 400)
     assert.equal((await put({ scope: 'episode', index: 999, status: 'read' })).status, 400)
     assert.equal((await fetch(base + '/library/syosetu/missing/reading')).status, 404)
@@ -173,5 +176,19 @@ test('开始/继续阅读：首话定位和最远在读话不受最近更新时�
     assert.equal(nonContiguous.firstEpisodeIndex, 5)
     assert.equal(nonContiguous.furthestReadingIndex, 10)
     assert.equal(summarizeReading([]).firstEpisodeIndex, null)
+  } finally { db.close() }
+})
+
+test('全书弹窗指定范围只修改范围内现有话，非法输入原子拒绝且不跨作品', () => {
+  const db = setup()
+  try {
+    db.upsertCatalog(catalog('other-range'))
+    assert.equal(db.updateReading(site, novelId, { scope: 'range', startIndex: 2, endIndex: 3, status: 'read' }).states, '0220')
+    assert.equal(db.updateReading(site, novelId, { scope: 'range', startIndex: 3, endIndex: 3, status: 'reading' }).states, '0210')
+    assert.equal(db.readingProgress(site, 'other-range')!.states, '0000')
+    for (const [startIndex, endIndex] of [[0, 2], [3, 2], [1, 5], [1.5, 3], [1, null], ['1', 2]]) {
+      assert.throws(() => db.updateReading(site, novelId, { scope: 'range', startIndex, endIndex, status: 'read' } as UpdateReading))
+      assert.equal(db.readingProgress(site, novelId)!.states, '0210')
+    }
   } finally { db.close() }
 })
