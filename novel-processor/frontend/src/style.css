@@ -566,3 +566,8 @@ html[data-theme='dark'] .app-shell--reading {
   .app-shell--reading .site-header,
   .app-shell--reading .site-footer { display: none; }
 }
+
+/* 独立安装到 iPhone 主屏幕后，避开横屏刘海与底部指示条。 */
+@supports (padding: env(safe-area-inset-left)) {
+  body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+}

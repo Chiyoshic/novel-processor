@@ -1,5 +1,6 @@
 import { computed, reactive, watch } from 'vue'
 import type { CSSProperties } from 'vue'
+import { isDarkColor } from './browser-chrome'
 
 const storageKey = 'novel-processor.reader-preferences.v1'
 export const readerDefaults = { fontSize: 18, letterSpacing: 0.035, lineHeight: 2.15, paragraphSpacing: 0.85, characterHints: true, background: '', textColor: '' }
@@ -45,9 +46,7 @@ export const readerStyle = computed<CSSProperties>(() => {
     '--reader-brand': preset ? preset.accent || 'var(--reader-accent)' : value.textColor || 'var(--reader-accent)',
   }
   if (value.background) {
-    const rgb = [1, 3, 5].map((index) => parseInt(value.background.slice(index, index + 2), 16))
-    const luminance = rgb.map((channel) => { const n = channel / 255; return n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4 }).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i]!, 0)
-    const dark = luminance < .18
+    const dark = isDarkColor(value.background)
     Object.assign(style, {
       '--paper': value.background,
       '--ink': dark ? '#e7e2d8' : '#302b24',

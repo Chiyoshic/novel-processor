@@ -40,6 +40,10 @@ npm run build
 
 前端使用 History 路由，Nginx 必须配置 `try_files $uri $uri/ /index.html;`。宝塔站点可直接使用 `deploy/nginx/baota-spa.conf`，具体位置、重载及验证步骤见 `docs/frontend-deployment.md`。只更新 `dist` 无法修复服务器的路由 404。
 
+## PWA 与苹果主屏幕
+
+支持安装为独立窗口，附带苹果 PNG 图标、静态资源缓存和手动确认更新。部署需上传完整 `dist` 并更新 Nginx 的 SW/manifest 规则，详见 `docs/pwa.md`。登录、小说数据和 AI 功能仍需联网。
+
 ## 阅读记录
 
 原文与译文共用未读／在读／已读状态，SQLite 持久化；目录支持逐话、按章、全书修改，书架以按话序排列的红黄绿状态条显示阅读分布。规则、接口和备份说明见 `docs/reading-progress.md`。

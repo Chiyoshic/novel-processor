@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { readerStyle } from '@/lib/reader-preferences'
+import { readerPreferences, readerStyle } from '@/lib/reader-preferences'
+import { resolvedTheme, setBrowserBackground } from '@/theme'
 import AppHeader from '@/components/AppHeader.vue'
 import AppToast from '@/components/AppToast.vue'
+import PwaStatus from '@/components/PwaStatus.vue'
 import { useAuth } from '@/stores/auth'
 import { useSites } from '@/stores/sites'
 
 const route = useRoute()
 const isReading = computed(() => route.name === 'reader')
+watch([isReading, resolvedTheme, () => readerPreferences.background], ([reading, mode, paper]) => {
+  setBrowserBackground(reading ? paper || (mode === 'dark' ? '#191c1b' : '#f7f3eb') : null)
+}, { immediate: true, flush: 'sync' })
 const { load } = useSites()
 
 const { user } = useAuth()
@@ -31,12 +36,15 @@ watch(user, (value) => { if (value) void load() }, { immediate: true })
     </footer>
 
     <AppToast />
+    <PwaStatus />
   </div>
 </template>
 
 <style scoped>
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
