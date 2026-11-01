@@ -58,6 +58,8 @@ export interface FetchEpisodesOptions extends FetchNovelOptions {
   indices?: number[]
   /** 跳过判定，返回 true 则不抓（断点续传） */
   shouldSkip?: (index: number) => Promise<boolean> | boolean
+  /** 当前实际抓取的话（不包含排队/跳过项）；失败和取消也会回报结束。 */
+  onEpisodeState?: (index: number, active: boolean) => void
   /** 每成功抓完一话回调一次，用于即时落盘 */
   onEpisode?: (content: EpisodeContent & { ref: NovelRef }) => Promise<void> | void
 }
@@ -343,6 +345,7 @@ export class NovelFetcher {
           return
         }
 
+        options.onEpisodeState?.(index, true)
         try {
           const content = await this.fetchOne(adapter, ref, index, { ...options, onProgress: undefined })
           await options.onEpisode?.(content)
@@ -351,7 +354,7 @@ export class NovelFetcher {
           // 取消不是失败，不计入 failed
           if (err instanceof NovelError && err.code === 'ABORTED') return
           failed.push({ index, error: describeError(err) })
-        }
+        } finally { options.onEpisodeState?.(index, false) }
         report()
       },
       options.signal,

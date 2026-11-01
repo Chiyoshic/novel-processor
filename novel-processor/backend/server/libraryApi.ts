@@ -149,6 +149,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
    * 进程重启会丢，但那时任务也中止了，正好一致。
    */
   interface DownloadJob {
+    activeIndices: number[]
     total: number
     done: number
     failed: number
@@ -626,6 +627,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           }
 
           jobs.set(jobKey, {
+            activeIndices: [],
             total: indices?.length ?? record.episodes.length,
             done: 0,
             failed: 0,
@@ -638,6 +640,10 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             indices,
             overwrite,
             concurrency,
+            onEpisodeState: (index, active) => {
+              const job = jobs.get(jobKey)
+              if (job) job.activeIndices = active ? [...new Set([...job.activeIndices, index])] : job.activeIndices.filter((value) => value !== index)
+            },
             // 每抓完一话立刻写索引：否则 /status 在整批结束前都返回旧值，
             // 前端轮询拿不到任何变化，进度条等于不动。
             onEpisode: (content) => {
@@ -647,6 +653,13 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
               if (rowId !== null) db.markContent(site, novelId, [content.index])
               db.invalidateEpisodeTranslation(site, novelId, content.index, hashEpisodeSource(content))
             },
+          }).catch((error) => {
+            const job = jobs.get(jobKey)
+            if (job) { job.running = false; job.finishedAt = Date.now() }
+            throw error
+          }).finally(() => {
+            const job = jobs.get(jobKey)
+            if (job) job.activeIndices = []
           })
 
           // 用磁盘真实状态回写索引，修正增量标记的偏差（例如中断、手动删文件）

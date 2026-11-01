@@ -158,13 +158,13 @@ onUnmounted(() => {
       <span v-if="entry" class="crumb-current">{{ entry.source.novelId }}</span>
 
       <div v-if="entry" class="crumb-actions">
-        <RouterLink class="pill pill--small translation-entry" :to="{ name: 'translation', params: { site, novelId } }">
-          AI 翻译
+        <RouterLink class="action-icon-button" aria-label="AI 翻译" title="AI 翻译" :to="{ name: 'translation', params: { site, novelId } }">
+          <span class="action-icon action-icon--translate" aria-hidden="true" />
         </RouterLink>
-        <button class="text-btn" type="button" :disabled="refreshing || !!busy" @click="handleRefresh">
-          {{ refreshing ? '更新中…' : '更新目录' }}
+        <button class="action-icon-button" type="button" :disabled="refreshing || !!busy" :aria-label="refreshing ? '正在更新目录' : '更新目录'" :title="refreshing ? '正在更新目录' : '更新目录'" :aria-busy="refreshing" @click="handleRefresh">
+          <span class="action-icon action-icon--refresh" :class="{ 'is-refreshing': refreshing }" aria-hidden="true" />
         </button>
-        <button class="text-danger" type="button" :disabled="!!busy" @click="pendingTrash = true">删除</button>
+        <button class="action-icon-button action-icon-button--danger" type="button" :disabled="!!busy || refreshing" aria-label="删除作品" title="删除作品" @click="pendingTrash = true"><span class="action-icon action-icon--trash" aria-hidden="true" /></button>
       </div>
     </nav>
 
@@ -221,7 +221,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 22px 0 14px;
+  padding: 20px 0 10px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--faint);
@@ -247,45 +247,35 @@ onUnmounted(() => {
 .crumb-actions {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 2px;
   margin-left: auto;
 }
 
-.text-btn {
-  border: 0;
-  background: none;
+.action-icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
   padding: 0;
-  font-family: inherit;
-  font-size: 11px;
-  color: var(--muted);
-  cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
-
-.text-btn:hover:not(:disabled) {
+  border-radius: 50%;
+  background: transparent;
   color: var(--blue-dark);
-}
-
-.text-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.text-danger {
-  border: 0;
-  background: none;
-  padding: 0;
-  font-family: inherit;
-  font-size: 11px;
-  color: #b4544f;
   cursor: pointer;
-  transition: border-color 0.2s ease;
+  transition: background .18s ease, opacity .18s ease;
 }
-
-.text-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.action-icon-button:hover:not(:disabled) { background: var(--blue-soft); }
+.action-icon-button--danger { color: #c34f49; }
+.action-icon-button--danger:hover:not(:disabled) { background: rgb(195 79 73 / 10%); }
+.action-icon-button:disabled { opacity: .45; cursor: not-allowed; }
+.action-icon { display: block; width: 28px; height: 28px; background: currentColor; -webkit-mask: var(--action-icon) center / contain no-repeat; mask: var(--action-icon) center / contain no-repeat; }
+.action-icon--translate { --action-icon: url('/icons/translate.svg'); width: 32px; }
+.action-icon--refresh { --action-icon: url('/icons/arrow.clockwise.circle.fill.svg'); }
+.action-icon--trash { --action-icon: url('/icons/trash.circle.fill.svg'); }
+.is-refreshing { animation: refresh-spin 1.2s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .is-refreshing { animation: none; } }
+:global(html[data-theme='dark']) .action-icon-button--danger { color: #ed9289; }
 
 .state {
   display: flex;
@@ -324,12 +314,11 @@ onUnmounted(() => {
 
 @media (max-width: 580px) {
   .novel { padding-bottom: 36px; }
-  .crumbs { flex-wrap: wrap; gap: 4px 10px; padding: 12px 0; }
+  .crumbs { flex-wrap: wrap; gap: 8px 10px; padding: 12px 0 8px; }
   .crumb-current { overflow-wrap: anywhere; }
-  .crumb-actions { width: 100%; margin-left: 0; }
+  .crumb-actions { width: 100%; margin-left: 0; gap: 2px; }
   .crumb-actions button { min-height: 44px; }
   .state-actions { flex-wrap: wrap; justify-content: center; }
 }
 
-.translation-entry { flex: none; }
 </style>

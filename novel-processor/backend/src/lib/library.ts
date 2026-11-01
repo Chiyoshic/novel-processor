@@ -168,6 +168,7 @@ export class NovelLibrary {
       maxPages: options.maxPages,
       signal: options.signal,
       onProgress: options.onProgress,
+      onEpisodeState: options.onEpisodeState,
       concurrency,
       indices,
       shouldSkip: async (index) => (options.overwrite ? false : this.episodeStore.has(ref, index)),

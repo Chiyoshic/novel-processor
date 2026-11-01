@@ -21,3 +21,9 @@ export function summarizeReading(episodes: Pick<EpisodeReading, 'status'>[]): Re
     percent: episodes.length ? Math.round(read / episodes.length * 10000) / 100 : 0,
     states: episodes.map((episode) => episode.status === 'read' ? '2' : episode.status === 'reading' ? '1' : '0').join('') }
 }
+
+/** Mixed read/unread episodes represent an in-progress chapter/book. */
+export function aggregateReadingState(states: readonly ReadingState[]): ReadingState {
+  if (states.length && states.every((state) => state === 'read')) return 'read'
+  return states.some((state) => state !== 'unread') ? 'reading' : 'unread'
+}

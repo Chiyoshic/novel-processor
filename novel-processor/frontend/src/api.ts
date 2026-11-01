@@ -103,6 +103,7 @@ export interface LibraryFacets {
 
 /** 下载任务进度（内存态，随任务结束而停止变化）。 */
 export interface DownloadJob {
+  activeIndices?: number[]
   total: number
   done: number
   failed: number

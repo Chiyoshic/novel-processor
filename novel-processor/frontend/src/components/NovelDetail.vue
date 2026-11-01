@@ -4,7 +4,8 @@ import type { Episode, NovelRecord } from '@/lib'
 import type { DownloadJob } from '@/api'
 import { episodeTranslationLabels, type EpisodeTranslationStatus } from '@shared/episode-translation'
 import ReadingStatusBar from './ReadingStatusBar.vue'
-import { readingLabels, readingStates, type ReadingProgress, type ReadingState, type UpdateReading } from '@shared/reading'
+import ReadingStateControl from './ReadingStateControl.vue'
+import { aggregateReadingState, type ReadingProgress, type ReadingState, type UpdateReading } from '@shared/reading'
 import { detectLang } from '@/utils/lang'
 
 const props = defineProps<{
@@ -23,19 +24,11 @@ const emit = defineEmits<{
   download: [payload: { range?: string; all?: boolean; overwrite?: boolean }]
 }>()
 
-const bookReadingState = ref<ReadingState>('read')
 const readingByIndex = computed(() => new Map((props.reading?.episodes ?? []).map((item) => [item.index, item.status])))
-function setEpisodeReading(event: Event, index: number): void {
-  const target = event.target as HTMLSelectElement
-  const status = target.value as ReadingState
-  target.value = readingByIndex.value.get(index) ?? 'unread'
-  emit('update-reading', { scope: 'episode', index, status })
+function rangeReadingState(episodes: Episode[]): ReadingState {
+  return aggregateReadingState(episodes.map((episode) => readingByIndex.value.get(episode.index) ?? 'unread'))
 }
-function setChapterReading(event: Event, key: string): void {
-  const target = event.target as HTMLSelectElement
-  const status = target.value as ReadingState
-  target.value = ''
-  if (!status) return
+function setChapterReading(status: ReadingState, key: string): void {
   emit('update-reading', key === 'all' ? { scope: 'book', status } : { scope: 'chapter', chapterIndex: key === 'loose' ? null : Number(key.slice(1)), status })
 }
 const translationStates = computed(() => new Map((props.translations ?? []).map((item) => [item.index, item])))
@@ -99,6 +92,11 @@ const percent = computed(() => (total.value === 0 ? 0 : Math.round((have.value /
 const missing = computed(() => total.value - have.value)
 
 /** 当前下载任务（内存态），仅 running 时展示 */
+const fetchingIndices = computed(() => new Set(props.job?.running ? props.job.activeIndices ?? [] : []))
+function downloadState(index: number): 'fetching' | 'stored' | 'missing' {
+  return fetchingIndices.value.has(index) ? 'fetching' : props.downloaded.has(index) ? 'stored' : 'missing'
+}
+const downloadStateLabels = { fetching: '正在抓取', stored: '已存', missing: '未存' }
 const running = computed(() => props.job?.running === true)
 const jobDone = computed(() => props.job?.done ?? 0)
 const jobTotal = computed(() => props.job?.total ?? 0)
@@ -264,14 +262,14 @@ watch(
         </button>
         <button class="pill" type="button" :disabled="!!busy" @click="emit('download', { all: true, overwrite: true })">
           <span>{{ running ? `下载中 ${jobDone}/${jobTotal}` : busy ? '下载中…' : '全部重抓' }}</span>
-          <span class="pill__arrow" aria-hidden="true">↗</span>
+          <span class="download-all-icon" aria-hidden="true" />
         </button>
       </div>
     </div>
 
     <section class="reading-management" aria-label="阅读进度管理">
       <ReadingStatusBar v-if="reading" :progress="reading" />
-      <div class="book-reading-actions"><label>全书阅读状态<select v-model="bookReadingState" :disabled="readingSaving"><option v-for="state in readingStates" :key="state" :value="state">{{ readingLabels[state] }}</option></select></label><button class="pill pill--ghost pill--small" type="button" :disabled="readingSaving" @click="emit('update-reading', { scope: 'book', status: bookReadingState })">{{ readingSaving ? '保存中…' : '应用全书' }}</button></div>
+      <div class="book-reading-actions"><span>全书阅读状态</span><ReadingStateControl :status="rangeReadingState(catalog.episodes)" label="全书" :count="catalog.episodes.length" :disabled="readingSaving" @change="emit('update-reading', { scope: 'book', status: $event })" /></div>
     </section>
     <div class="list-head">
       <span class="eyebrow eyebrow--faint">Contents</span>
@@ -288,7 +286,7 @@ watch(
           <span class="group-caret" :class="{ open: !isCollapsed(group.key) }" aria-hidden="true">▸</span>
           <span class="group-title serif" :lang="lang">{{ group.title }}</span>
           <span class="group-count">已读 {{ group.episodes.filter((episode) => readingByIndex.get(episode.index) === 'read').length }}/{{ group.episodes.length }} · 已存 {{ group.done }}</span>
-        </button><select class="chapter-reading-select" :disabled="readingSaving" :aria-label="`修改${group.title}的阅读状态`" value="" @change="setChapterReading($event, group.key)"><option value="" disabled>批量标记</option><option v-for="state in readingStates" :key="state" :value="state">{{ readingLabels[state] }}</option></select></div>
+        </button><div class="episode-status-actions"><ReadingStateControl compact :status="rangeReadingState(group.episodes)" :label="group.title" :count="group.episodes.length" :disabled="readingSaving" @change="setChapterReading($event, group.key)" /></div></div>
 
         <ul v-show="!isCollapsed(group.key)" class="episodes">
           <li v-for="episode in group.episodes" :key="episode.index" class="episode-item">
@@ -301,11 +299,12 @@ watch(
               <span class="ep-index">{{ String(episode.index).padStart(3, '0') }}</span>
               <span class="ep-title serif" :lang="lang">{{ episode.title }}<span class="translation-state" :class="{ translated: translationStates.get(episode.index)?.hasTranslation }" :title="translationStates.get(episode.index)?.error ?? undefined">{{ translationLabel(episode.index) }}</span></span>
               <span class="ep-date">{{ formatDate(episode.publishedAt) }}</span>
-              <span class="ep-state" :class="{ on: downloaded.has(episode.index) }">
-                {{ downloaded.has(episode.index) ? '已存' : '未存' }}
-              </span>
             </button>
-            <select class="episode-reading-select" :class="`reading-${readingByIndex.get(episode.index) ?? 'unread'}`" :value="readingByIndex.get(episode.index) ?? 'unread'" :disabled="readingSaving" :aria-label="`第 ${episode.index} 话阅读状态`" @change="setEpisodeReading($event, episode.index)"><option v-for="state in readingStates" :key="state" :value="state">{{ readingLabels[state] }}</option></select>
+            <div class="episode-status-actions">
+            <button v-if="downloadState(episode.index) === 'missing'" class="ep-state ep-state--missing ep-download-button" type="button" :disabled="!!busy || running" :aria-label="`下载第 ${episode.index} 话`" :title="`未存，点击下载第 ${episode.index} 话`" @click.stop="emit('download', { range: String(episode.index) })"><span class="ep-download-icon" aria-hidden="true" /></button>
+            <span v-else class="ep-state" :class="`ep-state--${downloadState(episode.index)}`" role="img" :aria-label="downloadStateLabels[downloadState(episode.index)]" :title="downloadStateLabels[downloadState(episode.index)]"><span class="ep-download-icon" aria-hidden="true" /></span>
+            <ReadingStateControl compact :status="readingByIndex.get(episode.index) ?? 'unread'" :label="`第 ${episode.index} 话 · ${episode.title}`" :disabled="readingSaving" @change="emit('update-reading', { scope: 'episode', index: episode.index, status: $event })" />
+            </div>
           </li>
         </ul>
       </div>
@@ -314,12 +313,23 @@ watch(
 </template>
 
 <style scoped>
+.download-all-icon {
+  display: block;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  background: currentColor;
+  -webkit-mask: url('/icons/arrow.down.circle.fill.svg') center / contain no-repeat;
+  mask: url('/icons/arrow.down.circle.fill.svg') center / contain no-repeat;
+}
+
 .reading-management { margin-top: 22px; padding-top: 6px; border-top: 1px solid var(--line); }
-.book-reading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }.book-reading-actions label { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
-.book-reading-actions select, .chapter-reading-select, .episode-reading-select { min-height: 40px; padding: 8px 10px; border-radius: 12px; background: var(--paper); color: var(--ink); font-family: inherit; font-size: 12px; cursor: pointer; }
-.group-heading { display: flex; align-items: center; gap: 10px; }.group-heading .group-head { flex: 1; min-width: 0; }.chapter-reading-select { flex: none; max-width: 105px; }
-.episode-item { display: flex; align-items: center; gap: 8px; }.episode-item .episode { flex: 1; min-width: 0; width: auto; }.episode-reading-select { flex: none; max-width: 82px; }.episode-reading-select.reading-unread { box-shadow: inset 3px 0 var(--reading-unread); }.episode-reading-select.reading-reading { box-shadow: inset 3px 0 var(--reading-active); }.episode-reading-select.reading-read { box-shadow: inset 3px 0 var(--reading-done); }
-@media(max-width:580px) { .group-heading { flex-wrap: wrap; padding-bottom: 8px; }.group-heading .group-head { flex-basis: 100%; }.chapter-reading-select { margin-left: auto; }.episode-item { gap: 4px; }.episode-reading-select { max-width: 74px; padding-inline: 6px; font-size: 13px; }.group-count { white-space: normal; } }
+.book-reading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; color: var(--muted); font-size: 12px; }
+/* 章标题和每话使用相同的固定双图标列，阅读状态始终在最右侧同一轴线上。 */
+.group-heading, .episode-item { display: grid; grid-template-columns: minmax(0, 1fr) 64px; align-items: center; gap: 8px; }
+.group-heading .group-head, .episode-item .episode { min-width: 0; width: 100%; }
+.episode-status-actions { display: flex; align-items: center; justify-content: flex-end; width: 64px; gap: 0; }.episode-status-actions .ep-state { width: 32px; }
+@media(max-width:580px) { .group-heading { gap: 4px; }.episode-item { gap: 4px; }.group-count { white-space: normal; } }
 
 .detail {
   min-width: 0;
@@ -666,7 +676,7 @@ watch(
 
 .episode {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 84px 42px;
+  grid-template-columns: 42px minmax(0, 1fr) 84px;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -716,16 +726,29 @@ watch(
 
 .translation-state { display: inline-block; vertical-align: middle; font: 10px/1.7 var(--sans); border-radius: 999px; padding: 2px 8px; background: var(--paper); color: var(--muted); margin-left: 8px; white-space: nowrap; }.translation-state.translated { color: var(--blue-dark); background: var(--blue-soft); }
 .ep-state {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-align: right;
-  color: #b9c6cd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  min-height: 44px;
+  color: var(--muted);
 }
-
-.ep-state.on {
-  color: #4f8d7b;
+.ep-download-button { padding: 0; border: 0; border-radius: 12px; background: transparent; cursor: pointer; }
+.ep-download-button:hover:not(:disabled) { background: var(--blue-soft); color: var(--blue-dark); }
+.ep-download-button:disabled { opacity: .45; cursor: not-allowed; }
+.ep-download-icon {
+  display: block;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: var(--download-state-icon) center / contain no-repeat;
+  mask: var(--download-state-icon) center / contain no-repeat;
 }
+.ep-state--missing { --download-state-icon: url('/icons/square.and.arrow.down.badge.xmark.svg'); }
+.ep-state--fetching { --download-state-icon: url('/icons/square.and.arrow.down.badge.clock.svg'); color: var(--blue-dark); }
+.ep-state--stored { --download-state-icon: url('/icons/square.and.arrow.down.badge.checkmark.svg'); color: var(--success-ink); }
 
 @media (max-width: 900px) {
   .detail {
@@ -750,7 +773,7 @@ watch(
     justify-content: space-between;
   }
   .episode {
-    grid-template-columns: 38px minmax(0, 1fr) 40px;
+    grid-template-columns: 38px minmax(0, 1fr);
   }
   .ep-date {
     display: none;
@@ -768,7 +791,7 @@ watch(
   .toolbar-actions { flex-wrap: wrap; justify-content: flex-start; }
   .concurrency { min-height: 42px; }
   .episode-list { max-height: 55vh; }
-  .episode { min-height: 44px; gap: 6px; padding: 9px 4px; grid-template-columns: 30px minmax(0, 1fr) 40px; }
+  .episode { min-height: 44px; gap: 6px; padding: 9px 4px; grid-template-columns: 30px minmax(0, 1fr); }
   .group-title { min-width: 0; overflow-wrap: anywhere; }
   .group-count { flex: none; }
   .list-tools .text-btn { min-height: 40px; }

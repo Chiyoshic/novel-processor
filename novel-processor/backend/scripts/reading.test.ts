@@ -11,7 +11,7 @@ import { LibraryDb } from '../server/db'
 import { createLibraryApiHandler, type LibraryApiDeps } from '../server/libraryApi'
 import type { NovelRecord } from '../../shared/types'
 import type { ReadingProgress, UpdateReading } from '../../shared/reading'
-import { summarizeReading } from '../../shared/reading'
+import { aggregateReadingState, summarizeReading } from '../../shared/reading'
 
 function catalog(novelId = 'reading-fixture'): NovelRecord {
   return {
@@ -109,10 +109,49 @@ test('HTTP 阅读状态 GET/PUT、批量范围、错误码与书架汇总', asyn
     assert.equal(updated.status, 200); assert.equal((await updated.json() as ReadingProgress).states, '2200')
     const library = await (await fetch(base + '/library')).json() as { items: Array<{ reading: { states: string } }> }
     assert.equal(library.items[0]!.reading.states, '2200')
+    const filtered = await (await fetch(base + '/library?readingProgress=reading&progress=none')).json() as { total: number }
+    assert.equal(filtered.total, 1)
+    const notFinished = await (await fetch(base + '/library?readingProgress=read')).json() as { total: number }
+    assert.equal(notFinished.total, 0)
     assert.equal((await put({ scope: 'book', status: 'invalid' })).status, 400)
     assert.equal((await put({ scope: 'episode', index: 999, status: 'read' })).status, 400)
     assert.equal((await fetch(base + '/library/syosetu/missing/reading')).status, 404)
     db.trashNovel(site, novelId)
     assert.equal((await put({ scope: 'book', status: 'read' })).status, 409)
   } finally { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); db.close() }
+})
+
+test('阅读筛选独立于下载：未读/在读/已读完支持组合、分页、重置和回收站', () => {
+  const db = setup()
+  try {
+    for (const id of ['partial', 'active', 'complete', 'empty']) db.upsertCatalog(id === 'empty' ? { ...catalog(id), episodes: [], chapters: [] } : catalog(id))
+    db.updateReading(site, 'partial', { scope: 'episode', index: 1, status: 'read' })
+    db.updateReading(site, 'active', { scope: 'episode', index: 2, status: 'reading' })
+    db.updateReading(site, 'complete', { scope: 'book', status: 'read' })
+    db.markContent(site, 'partial', [1, 2, 3, 4])
+    db.markContent(site, 'complete', [1])
+    const ids = (query: Parameters<LibraryDb['listNovels']>[0]) => db.listNovels(query).items.map((item) => item.novelId).sort()
+    assert.deepEqual(ids({ readingProgress: 'unread' }), ['empty', novelId].sort())
+    assert.deepEqual(ids({ readingProgress: 'reading' }), ['active', 'partial'])
+    assert.deepEqual(ids({ readingProgress: 'read' }), ['complete'])
+    assert.deepEqual(ids({ readingProgress: 'reading', progress: 'complete' }), ['partial'])
+    assert.deepEqual(ids({ readingProgress: 'read', progress: 'none' }), [])
+    const paged = db.listNovels({ readingProgress: 'reading', limit: 1 })
+    assert.equal(paged.total, 2); assert.equal(paged.items.length, 1)
+    db.updateReading(site, 'complete', { scope: 'episode', index: 1, status: 'unread' })
+    assert.deepEqual(ids({ readingProgress: 'read' }), [])
+    assert.deepEqual(ids({ readingProgress: 'reading' }), ['active', 'complete', 'partial'])
+    db.trashNovel(site, 'partial')
+    assert.deepEqual(ids({ readingProgress: 'reading', progress: 'complete' }), [])
+    assert.deepEqual(ids({ readingProgress: 'reading', progress: 'complete', trashed: true }), ['partial'])
+  } finally { db.close() }
+})
+
+test('章节/全书图标聚合：全未读为红、全部已读为绿、混合与在读为黄', () => {
+  assert.equal(aggregateReadingState([]), 'unread')
+  assert.equal(aggregateReadingState(['unread', 'unread']), 'unread')
+  assert.equal(aggregateReadingState(['read', 'read']), 'read')
+  assert.equal(aggregateReadingState(['reading', 'unread']), 'reading')
+  assert.equal(aggregateReadingState(['read', 'unread']), 'reading')
+  assert.equal(aggregateReadingState(['read', 'reading']), 'reading')
 })
