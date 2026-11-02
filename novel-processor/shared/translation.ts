@@ -3,7 +3,9 @@ import type { ReasoningLevel } from './ai'
 /** Translation initialization is the required first step before chapter translation. */
 export interface TranslationOptions {
   modelId: number
+  /** Legacy field name: count is measured in selectionUnit. */
   chapterCount: number
+  selectionUnit?: 'chapter' | 'episode'
   includeSummary: boolean
   includePreface: boolean
   requirements: string

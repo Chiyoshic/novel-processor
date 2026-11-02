@@ -38,17 +38,18 @@ const FORMAT: TranslationBrief = {
 
 export function parseTranslationOptions(body: Record<string, unknown>): TranslationOptions {
   if (!Number.isSafeInteger(body.modelId) || Number(body.modelId) < 1) throw new Error('请选择模型')
-  if (!Number.isSafeInteger(body.chapterCount) || Number(body.chapterCount) < 1) throw new Error('初始化章节数必须是正整数')
+  if (!Number.isSafeInteger(body.chapterCount) || Number(body.chapterCount) < 1) throw new Error('初始化样本数量必须是正整数')
   if (typeof body.includeSummary !== 'boolean' || typeof body.includePreface !== 'boolean') throw new Error('请选择简介和前言的材料选项')
   if (typeof body.requirements !== 'string' || body.requirements.length > 10000) throw new Error('翻译要求最多 10000 字')
   if (body.reasoningLevel !== undefined && !REASONING_LEVELS.includes(body.reasoningLevel as ReasoningLevel)) throw new Error('思考等级无效')
-  return { reasoningLevel: body.reasoningLevel as ReasoningLevel | undefined, modelId: Number(body.modelId), chapterCount: Number(body.chapterCount), includeSummary: body.includeSummary, includePreface: body.includePreface, requirements: body.requirements.trim() }
+  if (body.selectionUnit !== undefined && body.selectionUnit !== 'episode' && body.selectionUnit !== 'chapter') throw new Error('样本选取单位无效')
+  return { selectionUnit: body.selectionUnit as TranslationOptions['selectionUnit'], reasoningLevel: body.reasoningLevel as ReasoningLevel | undefined, modelId: Number(body.modelId), chapterCount: Number(body.chapterCount), includeSummary: body.includeSummary, includePreface: body.includePreface, requirements: body.requirements.trim() }
 }
 
-export function selectInitializationEpisodes(record: NovelRecord, count: number) {
-  const total = record.chapters.length || record.episodes.length
+export function selectInitializationEpisodes(record: NovelRecord, count: number, unit: 'chapter' | 'episode' = record.chapters.length ? 'chapter' : 'episode') {
+  const total = unit === 'episode' ? record.episodes.length : record.chapters.length || record.episodes.length
   if (!Number.isSafeInteger(count) || count < 1 || count > total) throw new Error('样本数量超过目录范围')
-  if (!record.chapters.length) return record.episodes.slice(0, count)
+  if (unit === 'episode' || !record.chapters.length) return record.episodes.slice(0, count)
   // Include opening ungrouped episodes before the end of the selected chapters.
   const end = record.chapters[count - 1].episodeEnd
   return record.episodes.filter((episode) => episode.index <= end)
@@ -71,7 +72,7 @@ export function buildInitializationInput(record: NovelRecord, contents: EpisodeC
     throw new Error(`材料超过模型的保守上下文预算（估算 ${budgetEstimate} tokens），请减少话数或选择更大上下文模型；尚未发送请求`)
   }
   const request: TranslationInitialization['request'] = {
-    ...options, promptVersion: PROMPT_VERSION, model: model.model, modelName: model.name, apiType: model.apiType, reasoningDialect: model.reasoningDialect, effectiveReasoningLevel: options.reasoningLevel ?? model.reasoningLevel, selectionUnit: record.chapters.length ? 'chapter' : 'episode',
+    ...options, promptVersion: PROMPT_VERSION, model: model.model, modelName: model.name, apiType: model.apiType, reasoningDialect: model.reasoningDialect, effectiveReasoningLevel: options.reasoningLevel ?? model.reasoningLevel, selectionUnit: options.selectionUnit ?? (record.chapters.length ? 'chapter' : 'episode'),
     episodes: contents.map((e) => ({ index: e.index, title: e.title })),
     sourceHash: createHash('sha256').update(JSON.stringify(materials)).digest('hex'), budgetEstimate,
   }

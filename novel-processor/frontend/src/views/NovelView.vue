@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BackButton from '@/components/BackButton.vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { NovelRecord } from '@/lib'
@@ -167,10 +168,7 @@ onUnmounted(() => {
 <template>
   <main class="novel section-wrap">
     <nav class="crumbs">
-      <CompactButton variant="functional" class="back-to-shelf" title="返回书架" @click="router.push('/')">
-        返回书架
-        <template #leadingIcon><span class="back-to-shelf-icon" /></template>
-      </CompactButton>
+      <BackButton to="/" title="返回书架">返回书架</BackButton>
 
       <div v-if="entry" class="crumb-actions">
         <RouterLink class="action-icon-button" aria-label="AI 翻译" title="AI 翻译" :to="{ name: 'translation', params: { site, novelId } }">
@@ -199,7 +197,7 @@ onUnmounted(() => {
           <span>{{ refreshing ? '抓取中…' : '重新抓取目录' }}</span>
           <span class="pill__arrow" aria-hidden="true">↗</span>
         </NormalButton>
-        <RouterLink to="/" class="pill pill--ghost pill--small"><span>返回书架</span></RouterLink>
+        <BackButton to="/">返回书架</BackButton>
       </div>
     </div>
 
@@ -246,16 +244,6 @@ onUnmounted(() => {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--faint);
-}
-
-.back-to-shelf { flex: none; }
-.back-to-shelf-icon {
-  display: block;
-  width: 12px;
-  height: 12px;
-  background: currentColor;
-  -webkit-mask: url('/icons/arrowshape.turn.up.backward.fill.svg') center / contain no-repeat;
-  mask: url('/icons/arrowshape.turn.up.backward.fill.svg') center / contain no-repeat;
 }
 
 .crumb-actions {

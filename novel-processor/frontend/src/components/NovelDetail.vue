@@ -103,6 +103,15 @@ const fetchingIndices = computed(() => new Set(props.job?.running ? props.job.ac
 function downloadState(index: number): 'fetching' | 'stored' | 'missing' {
   return fetchingIndices.value.has(index) ? 'fetching' : props.downloaded.has(index) ? 'stored' : 'missing'
 }
+function groupDownloadState(group: Group): 'fetching' | 'stored' | 'missing' {
+  if (group.episodes.some((episode) => fetchingIndices.value.has(episode.index))) return 'fetching'
+  return group.episodes.length > 0 && group.done === group.episodes.length ? 'stored' : 'missing'
+}
+function downloadGroup(group: Group): void {
+  if (props.busy || running.value) return
+  const range = group.episodes.filter((episode) => !props.downloaded.has(episode.index)).map((episode) => episode.index).join(',')
+  if (range) emit('download', { range })
+}
 const downloadStateLabels = { fetching: '正在抓取', stored: '已存', missing: '未存' }
 const running = computed(() => props.job?.running === true)
 const jobDone = computed(() => props.job?.done ?? 0)
@@ -252,13 +261,7 @@ watch(
       <div class="toolbar-actions">
         <label class="concurrency">
           <span class="eyebrow eyebrow--faint">Conc.</span>
-          <select v-model.number="concurrency" :disabled="!!busy">
-            <option :value="1">1</option>
-            <option :value="2">2</option>
-            <option :value="4">4</option>
-            <option :value="6">6</option>
-            <option :value="8">8</option>
-          </select>
+          <AppSelect size="compact" soft-shadow v-model="concurrency" class="concurrency-select" label="抓取并发数" :disabled="!!busy" :options="[1, 2, 4, 6, 8].map(value => ({ value, label: String(value) }))" />
         </label>
         <CompactButton variant="secondary" :disabled="!!busy || missing === 0" @click="emit('download', {})">补缺失</CompactButton>
         <NormalButton type="button" :disabled="!!busy" @click="emit('download', { all: true, overwrite: true })">
@@ -291,8 +294,12 @@ watch(
         <div class="group-heading"><button class="group-head" type="button" @click="toggle(group.key)">
           <span class="group-caret" :class="{ open: !isCollapsed(group.key) }" aria-hidden="true">▸</span>
           <span class="group-title serif" :lang="lang">{{ group.title }}</span>
-          <span class="group-count">已读 {{ group.episodes.filter((episode) => readingByIndex.get(episode.index) === 'read').length }}/{{ group.episodes.length }} · 已存 {{ group.done }}</span>
-        </button><div class="episode-status-actions"><ReadingStateControl compact :status="rangeReadingState(group.episodes)" :label="group.title" :count="group.episodes.length" :disabled="readingSaving" @change="setChapterReading($event, group.key)" /></div></div>
+        </button>
+        <div class="episode-status-actions">
+          <button v-if="groupDownloadState(group) === 'missing'" class="ep-state ep-state--missing ep-download-button" type="button" :disabled="!!busy || running || !group.episodes.length" :aria-label="`补抓 ${group.title} 未存的话`" title="未全部保存，点击补抓本章未存的话" @click.stop="downloadGroup(group)"><span class="ep-download-icon" aria-hidden="true" /></button>
+          <span v-else class="ep-state" :class="`ep-state--${groupDownloadState(group)}`" role="img" :aria-label="downloadStateLabels[groupDownloadState(group)]" :title="downloadStateLabels[groupDownloadState(group)]"><span class="ep-download-icon" aria-hidden="true" /></span>
+          <ReadingStateControl compact :status="rangeReadingState(group.episodes)" :label="group.title" :count="group.episodes.length" :disabled="readingSaving" @change="setChapterReading($event, group.key)" />
+        </div></div>
 
         <ul v-show="!isCollapsed(group.key)" class="episodes">
           <li v-for="episode in group.episodes" :key="episode.index" class="episode-item">
@@ -335,7 +342,7 @@ watch(
 .group-heading, .episode-item { display: grid; grid-template-columns: minmax(0, 1fr) 64px; align-items: center; gap: 8px; }
 .group-heading .group-head, .episode-item .episode { min-width: 0; width: 100%; }
 .episode-status-actions { display: flex; align-items: center; justify-content: flex-end; width: 64px; gap: 0; }.episode-status-actions .ep-state { width: 32px; }
-@media(max-width:580px) { .group-heading { gap: 4px; }.episode-item { gap: 4px; }.group-count { white-space: normal; } }
+@media(max-width:580px) { .group-heading { gap: 4px; }.episode-item { gap: 4px; } }
 
 .detail {
   min-width: 0;
@@ -573,21 +580,10 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 10px 7px 13px;
-  border-radius: 999px;
-  background: var(--paper);
+  padding: 0;
 }
 
-.concurrency select {
-  border: 0;
-  background: transparent;
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--blue-dark);
-  outline: none;
-  cursor: pointer;
-}
+
 
 .list-head {
   display: flex;
@@ -638,6 +634,7 @@ watch(
 .group-head {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 9px;
   width: 100%;
   padding: 13px 4px 11px;
@@ -658,18 +655,16 @@ watch(
 }
 
 .group-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.01em;
   color: var(--ink);
 }
 
-.group-count {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--faint);
-}
 
 .episodes {
   list-style: none;
@@ -800,11 +795,8 @@ watch(
   .stat strong { font-size: 21px; overflow-wrap: anywhere; }
   .range-field input { min-width: 0; min-height: 42px; font-size: 14px; }
   .toolbar-actions { flex-wrap: wrap; justify-content: flex-start; }
-  .concurrency { min-height: 42px; }
   .episode-list { max-height: 55vh; }
   .episode { min-height: 44px; gap: 6px; padding: 9px 4px; grid-template-columns: 30px minmax(0, 1fr); }
-  .group-title { min-width: 0; overflow-wrap: anywhere; }
-  .group-count { flex: none; }
   .summary-toggle { min-height: 40px; }
 }
 </style>

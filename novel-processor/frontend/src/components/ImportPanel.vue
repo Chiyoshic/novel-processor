@@ -2,7 +2,6 @@
 import NormalButton from '@/components/NormalButton.vue'
 import { computed, ref } from 'vue'
 import type { SiteInfo } from '@/lib'
-import AppSelect from '@/components/AppSelect.vue'
 import type { SelectOption } from '@/components/select-option'
 
 const props = defineProps<{

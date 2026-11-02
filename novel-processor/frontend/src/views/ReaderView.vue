@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BackButton from '@/components/BackButton.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { EpisodeContent, NovelRecord } from '@/lib'
@@ -214,10 +215,7 @@ async function finishReading(): Promise<void> {
   catch { /* Save error is shown beside the reading controls. */ }
   finally { navigating.value = false }
 }
-function editReading(event: Event): void {
-  const target = event.target as HTMLSelectElement
-  const status = target.value as ReadingState
-  target.value = readingState.value
+function editReading(status: ReadingState): void {
   void saveReadingStatus(status).catch(() => {})
 }
 
@@ -260,7 +258,7 @@ onUnmounted(() => {
 <template>
   <main class="reader-page">
     <nav class="crumbs section-wrap" aria-label="阅读导航">
-      <button class="crumb" type="button" @click="backToNovel">← {{ novelTitle || '作品' }}</button>
+      <BackButton :title="novelTitle || '返回目录'" @click="backToNovel">返回目录</BackButton>
       <span class="crumb-sep" aria-hidden="true">／</span>
       <span class="crumb-current">第 {{ episodeIndex }} 话</span>
     </nav>
@@ -271,7 +269,7 @@ onUnmounted(() => {
         <button type="button" :aria-pressed="translated" :disabled="!hasTranslation" @click="setLanguage('translation')">中文译文</button>
       </div>
       <RouterLink v-if="content && !loading && !hasTranslation" class="translation-link" :to="{ name: 'translation', params: { site, novelId }, query: { step: 'episodes' } }">去翻译本话 ↗</RouterLink>
-      <label v-if="content && !loading" class="reading-state-control">阅读状态<select :value="readingState" :disabled="!!readingSaving || navigating" @change="editReading"><option v-for="state in readingStates" :key="state" :value="state">{{ readingLabels[state] }}</option></select></label>
+      <label v-if="content && !loading" class="reading-state-control">阅读状态<AppSelect :model-value="readingState" label="阅读状态" :disabled="!!readingSaving || navigating" :options="readingStates.map(state => ({ value: state, label: readingLabels[state] }))" @update:model-value="editReading" /></label>
       <button class="reading-settings-toggle" type="button" :aria-expanded="settingsOpen" aria-controls="reader-settings" @click="settingsOpen = !settingsOpen">
         阅读设置 <span aria-hidden="true">{{ settingsOpen ? '−' : '＋' }}</span>
       </button>
@@ -366,15 +364,13 @@ onUnmounted(() => {
             <span aria-hidden="true">←</span>
             <span>上一话</span>
           </button>
-          <button class="pill pill--ghost pill--small" type="button" @click="backToNovel">
-            <span>目录</span>
-          </button>
+          <BackButton @click="backToNovel">返回目录</BackButton>
           <button class="pill pill--small" type="button" :disabled="!hasNext || navigating" @click="go(1)">
             <span>下一话</span>
             <span aria-hidden="true">→</span>
           </button>
       </nav>
-      <button v-if="content && !loading && !hasNext" class="finish-reading" type="button" :disabled="!reachedEnd || navigating || !!readingSaving" @click="finishReading">标记已读并返回目录</button>
+      <BackButton v-if="content && !loading && !hasNext" class="finish-reading" :disabled="!reachedEnd || navigating || !!readingSaving" @click="finishReading">标记已读并返回目录</BackButton>
     </div>
     <aside v-if="activeCharacter" ref="popover" class="character-popover" role="dialog" aria-label="人物简介" lang="zh-CN" :style="{ left: `${activeCharacter.left}px`, top: `${activeCharacter.top}px` }" @pointerenter="cancelDismiss" @pointerleave="dismissCharacter" @focusin="cancelDismiss" @focusout="dismissCharacter">
       <header><span>人物笺</span><button type="button" aria-label="关闭人物简介" @click="closeCharacter">关闭 ×</button></header>
@@ -405,21 +401,6 @@ onUnmounted(() => {
   line-height: 1.8;
   color: var(--muted);
 }
-.crumb {
-  min-width: 0;
-  max-width: 100%;
-  min-height: 40px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-  text-align: left;
-  background: none;
-  padding: 0;
-  color: inherit;
-  cursor: pointer;
-}
-.crumb:hover { color: var(--ink); }
 .crumb-sep, .crumb-current { flex: none; }
 .crumb-sep { color: var(--faint); }
 
@@ -458,11 +439,11 @@ onUnmounted(() => {
 .translation-note { flex-basis: 100%; }
 
 .reading-state-control { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
-.reading-state-control select { min-height: 44px; padding: 8px; background: transparent; color: var(--ink); font-family: inherit; font-size: 14px; }
+.reading-state-control { min-width: 0; }
 .reading-save-error { flex-basis: 100%; color: var(--muted); font-size: 13px; line-height: 1.9; }
 .reading-save-error button { background: transparent; color: var(--ink); padding: 8px; cursor: pointer; text-decoration: underline; }
 .reading-end-marker { height: 1px; }
-.finish-reading { display: flex; margin: 20px auto 0; min-height: 44px; padding: 10px 16px; background: transparent; color: var(--ink); font-size: 14px; cursor: pointer; text-decoration: underline; text-underline-offset: 6px; }.finish-reading:disabled { opacity: .45; cursor: not-allowed; }
+.finish-reading { display: flex; margin: 20px auto 0; }
 .reading-settings-toggle { margin-left: auto; gap: 10px; min-height: 44px; padding: 8px 0 8px 12px; background: transparent; color: var(--ink); font-size: 14px; cursor: pointer; }
 .reader-settings { padding: 24px 0; border-bottom: 1px solid var(--line); }
 .settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
@@ -581,7 +562,7 @@ onUnmounted(() => {
   padding-top: 24px;
   border-top: 1px solid var(--line);
 }
-.pager .pill, .state .pill {
+.pager .pill:not(.back-button), .state .pill {
   min-height: 44px;
   padding: 10px 12px;
   border-radius: 0;
@@ -593,9 +574,9 @@ onUnmounted(() => {
   letter-spacing: .08em;
   transform: none;
 }
-.pager .pill:first-child { justify-self: start; }
-.pager .pill:last-child { justify-self: end; }
-.pager .pill:hover:not(:disabled), .state .pill:hover:not(:disabled) {
+.pager .pill:not(.back-button):first-child { justify-self: start; }
+.pager .pill:not(.back-button):last-child { justify-self: end; }
+.pager .pill:not(.back-button):hover:not(:disabled), .state .pill:hover:not(:disabled) {
   background: transparent;
   color: var(--ink);
   text-decoration: underline;
@@ -619,7 +600,7 @@ onUnmounted(() => {
   .chapter-number { margin-top: 22px; }
   .head h1 { font-size: 24px; line-height: 1.65; }
   .pager { gap: 8px; margin-top: 44px; }
-  .pager .pill { gap: 6px; padding-inline: 4px; font-size: 13px; }
+  .pager .pill:not(.back-button) { gap: 6px; padding-inline: 4px; font-size: 13px; }
 }
 @media print {
   .crumbs, .reading-tools, .reader-settings, .character-popover, .finish-reading, .pager { display: none !important; }

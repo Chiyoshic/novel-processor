@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BackButton from '@/components/BackButton.vue'
 import { computed, onMounted, ref } from 'vue'
 import type { LibraryEntry } from '@/api'
 import { api } from '@/api'
@@ -86,7 +87,7 @@ onMounted(() => void load())
 <template>
   <main class="trash section-wrap">
     <nav class="crumbs">
-      <RouterLink to="/" class="crumb">← 书架</RouterLink>
+      <BackButton to="/">返回书架</BackButton>
       <span class="crumb-sep">/</span>
       <span class="crumb-current">回收站</span>
     </nav>
@@ -191,15 +192,6 @@ onMounted(() => void load())
   font-family: var(--mono);
   font-size: 11px;
   color: var(--faint);
-}
-
-.crumb {
-  color: var(--muted);
-  transition: color 0.2s ease;
-}
-
-.crumb:hover {
-  color: var(--blue-dark);
 }
 
 .crumb-sep {

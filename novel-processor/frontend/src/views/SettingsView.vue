@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BackButton from '@/components/BackButton.vue'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { api, type AiApiType, type AiModelConfig } from '@/api'
 import AccountSecurity from '@/components/AccountSecurity.vue'
@@ -93,7 +94,7 @@ onMounted(() => void load())
         <p class="eyebrow">Settings</p>
         <h1>设置</h1>
       </div>
-      <RouterLink class="pill pill--ghost pill--small" to="/">返回书架</RouterLink>
+      <BackButton to="/">返回书架</BackButton>
     </div>
 
     <div class="settings-layout">
@@ -121,10 +122,10 @@ onMounted(() => void load())
           <div class="form-grid">
             <label><span>名称</span><input v-model="form.name" required placeholder="例如：OpenAI 主模型" /></label>
             <label><span>提供方</span><input v-model="form.provider" list="providers" placeholder="openai-compatible / opencode / deepseek" /></label><datalist id="providers"><option value="openai-compatible" /><option value="opencode" /><option value="deepseek" /></datalist>
-            <label><span>协议</span><select v-model="form.apiType"><option value="responses">Responses API</option><option value="chat-completions">Chat Completions API</option></select></label>
-            <label><span>思考方言</span><select v-model="form.reasoningDialect"><option value="none">无</option><option value="openai">OpenAI reasoning</option><option value="deepseek">DeepSeek thinking</option></select></label>
-            <label><span>默认思考等级</span><select v-model="form.reasoningLevel"><option v-for="level in reasoningLevels(form.reasoningDialect)" :key="level" :value="level">{{ level === 'default' ? '默认（不指定）' : level === 'off' ? '关闭' : level }}</option></select></label>
-            <label><span>响应适配</span><select v-model="form.responseProfile"><option value="auto">自动</option><option value="generic">通用</option><option value="deepseek">DeepSeek / DSML</option><option value="off">关闭</option></select></label>
+            <label><span>协议</span><AppSelect soft-shadow v-model="form.apiType" block label="协议" :options="[{ value: 'responses', label: 'Responses API' }, { value: 'chat-completions', label: 'Chat Completions API' }]" /></label>
+            <label><span>思考方言</span><AppSelect soft-shadow v-model="form.reasoningDialect" block label="思考方言" :options="[{ value: 'none', label: '无' }, { value: 'openai', label: 'OpenAI reasoning' }, { value: 'deepseek', label: 'DeepSeek thinking' }]" /></label>
+            <label><span>默认思考等级</span><AppSelect soft-shadow v-model="form.reasoningLevel" block label="默认思考等级" :options="reasoningLevels(form.reasoningDialect).map(level => ({ value: level, label: level === 'default' ? '默认（不指定）' : level === 'off' ? '关闭' : level }))" /></label>
+            <label><span>响应适配</span><AppSelect soft-shadow v-model="form.responseProfile" block label="响应适配" :options="[{ value: 'auto', label: '自动' }, { value: 'generic', label: '通用' }, { value: 'deepseek', label: 'DeepSeek / DSML' }, { value: 'off', label: '关闭' }]" /></label>
             <div class="wide"><button class="pill pill--ghost pill--small" type="button" @click="applyPreset">应用提供方预设</button></div>
             <label class="wide"><span>Base URL</span><input v-model="form.baseUrl" required placeholder="https://api.openai.com/v1" /></label>
             <label><span>模型</span><input v-model="form.model" required placeholder="实际模型 ID" /></label>
@@ -145,7 +146,7 @@ onMounted(() => void load())
 
 <style scoped>
 .settings { flex: 1; padding-bottom: 56px; }
-.settings .pill { justify-content: center; padding-inline: 16px; text-align: center; }
+.settings .pill:not(.back-button) { justify-content: center; padding-inline: 16px; text-align: center; }
 .settings-head, .panel-head, .model-card, .model-info, .model-actions, .form-actions { display: flex; align-items: center; }
 .settings-head, .panel-head, .model-card { justify-content: space-between; gap: 20px; }
 .settings-head { margin: 28px 0 22px; }
@@ -163,7 +164,7 @@ onMounted(() => void load())
 .model-info { min-width: 0; gap: 10px; }.model-info h3 { font-size: 13px; }.model-info p { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .model-actions { gap: 12px; flex: none; }.text-btn, .text-danger { border: 0; background: none; padding: 6px 0; color: var(--muted); cursor: pointer; font-size: 11px; }.text-danger { color: #b4544f; }
 .empty-models { margin-top: 22px; padding: 28px; border-radius: var(--radius-md); background: var(--surface-soft); color: var(--muted); text-align: center; font-size: 12px; }
-.model-form { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--line); }.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }.form-grid label { display: grid; gap: 7px; color: var(--muted); font-size: 11px; }.form-grid .wide { grid-column: 1 / -1; }.form-grid input, .form-grid select, .form-grid textarea { width: 100%; padding: 11px 13px; border-radius: 13px; background: var(--white); color: var(--ink); outline: none; resize: vertical; }.enabled { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 12px; }.enabled input { accent-color: var(--blue); }.form-actions { justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.model-form { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--line); }.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }.form-grid label { min-width: 0; display: grid; gap: 7px; color: var(--muted); font-size: 11px; }.form-grid .wide { grid-column: 1 / -1; }.form-grid input, .form-grid textarea { width: 100%; padding: 11px 13px; border-radius: 13px; background: var(--white); color: var(--ink); outline: none; resize: vertical; }.enabled { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 12px; }.enabled input { accent-color: var(--blue); }.form-actions { justify-content: flex-end; gap: 8px; margin-top: 18px; }
 @media (max-width: 720px) { .settings { padding-bottom: 36px; }.settings-head { margin: 20px 0 16px; }.settings h1 { font-size: 26px; }.settings-layout { grid-template-columns: 1fr; }.settings-tabs { display: flex; }.settings-tab { text-align: center; }.settings-panel { padding: 18px 14px; }.panel-head { align-items: flex-start; }.panel-head .pill { flex: none; }.model-card { align-items: flex-start; flex-direction: column; }.model-actions { width: 100%; justify-content: flex-end; }.form-grid { grid-template-columns: 1fr; }.form-grid .wide { grid-column: auto; }.form-actions .pill { flex: 1; justify-content: center; } }
 </style>
 

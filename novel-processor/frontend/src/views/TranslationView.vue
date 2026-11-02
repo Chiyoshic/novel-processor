@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BackButton from '@/components/BackButton.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
@@ -38,13 +39,10 @@ watch(() => [props.site, props.novelId], () => void load(), { immediate: true })
 
 <template>
   <main class="translation-page section-wrap">
-    <nav class="crumbs" aria-label="面包屑">
-      <RouterLink :to="novelRoute">← 返回作品详情</RouterLink>
-      <span aria-hidden="true">/</span>
-      <span>AI 翻译</span>
+    <nav class="crumbs" aria-label="返回导航">
+      <BackButton :to="novelRoute">返回作品详情</BackButton>
     </nav>
     <header class="page-head">
-      <p class="eyebrow">AI Translation</p>
       <h1>AI 翻译</h1>
       <p class="novel-title">{{ catalog?.meta.title || novelId }}</p>
     </header>
@@ -54,32 +52,21 @@ watch(() => [props.site, props.novelId], () => void load(), { immediate: true })
       <button class="pill pill--small" type="button" @click="load">重新读取</button>
     </div>
     <div v-else-if="catalog" class="translation-layout">
-      <aside class="workflow" aria-label="翻译流程">
-        <p class="eyebrow">翻译流程</p>
-        <ol>
-          <li><button type="button" :aria-current="step === 'initialization' ? 'step' : undefined" @click="selectStep('initialization')"><span class="step-index">01</span><span>初始化翻译材料</span></button></li>
-          <li><button type="button" :aria-current="step === 'episodes' ? 'step' : undefined" @click="selectStep('episodes')"><span class="step-index">02</span><span>章节翻译</span></button></li>
-        </ol>
-      </aside>
+      <AppTabs :model-value="step" block label="翻译流程" :options="[{ value: 'initialization', label: '初始化材料' }, { value: 'episodes', label: '章节翻译' }]" @update:model-value="selectStep" />
       <div class="step-content"><TranslationWorkspace v-show="step === 'initialization'" ref="initialization" :key="JSON.stringify([site, novelId])" :catalog="catalog" /><EpisodeTranslationWorkspace v-if="step === 'episodes'" :key="JSON.stringify([site, novelId, 'episodes'])" :catalog="catalog" @baseline-updated="initialization?.reload()" /></div>
     </div>
   </main>
 </template>
 
 <style scoped>
-.translation-page { flex: 1; padding-bottom: 56px; }
-.crumbs { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px 0; color: var(--muted); font-size: 12px; }
+.translation-page { flex: 1; padding-bottom: 56px; color: var(--ink); }
+.crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 20px 0; color: var(--muted); font-size: 12px; }
 .crumbs a:hover { color: var(--blue-dark); }
 .page-head { margin: 10px 0 26px; }
-h1 { font-size: 30px; margin-top: 8px; }
+h1 { font-size: 30px; margin-top: 8px; color: var(--ink); }
 .novel-title { margin-top: 10px; color: var(--muted); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
-.translation-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
-.workflow { background: var(--surface-muted); border-radius: var(--radius-lg); padding: 20px 16px; }
-.workflow ol { list-style: none; margin: 16px 0; padding: 0; }
-.step-content { min-width: 0; }.workflow li + li { margin-top: 8px; }.workflow li button { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: left; display: flex; align-items: center; justify-content: flex-start; gap: 10px; background: var(--blue-soft); color: var(--blue-dark); padding: 12px; border-radius: 16px; font-size: 12px; font-weight: 600; }
-.workflow li button:not([aria-current]) { background: transparent; color: var(--muted); }.workflow li button:hover { background: var(--blue-soft); }
-.step-index { font-size: 11px; }
+.translation-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.step-content { min-width: 0; }
 .page-state { display: grid; justify-items: center; gap: 20px; padding: 60px 16px; color: var(--muted); font-size: 14px; }
-@media (max-width: 900px) { .translation-layout { grid-template-columns: 1fr; }.workflow { padding: 16px; }.workflow ol { margin: 12px 0 0; } }
 @media (max-width: 580px) { .translation-page { padding-bottom: 36px; }.page-head { margin: 4px 0 20px; }h1 { font-size: 26px; }.translation-layout { gap: 14px; } }
 </style>

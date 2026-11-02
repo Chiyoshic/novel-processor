@@ -346,7 +346,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             const record = await readCatalog(site, novelId)
             if (!record) { sendJson(res, 404, { error: '作品目录不存在' }); return }
             if (db.isTrashed(site, novelId)) { sendJson(res, 409, { error: '请先从回收站恢复作品' }); return }
-            const selected = selectInitializationEpisodes(record, options.chapterCount)
+            const selected = selectInitializationEpisodes(record, options.chapterCount, options.selectionUnit)
             if (streaming) {
               res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' })
               res.flushHeaders()
