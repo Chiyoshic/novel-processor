@@ -2,6 +2,7 @@
 import NormalButton from '@/components/NormalButton.vue'
 import CompactButton from '@/components/CompactButton.vue'
 import NovelStatusTag from './NovelStatusTag.vue'
+import { readEpisodePrefix, withoutReadPrefix } from '@shared/chapter-collapse'
 import { computed, ref, watch } from 'vue'
 import type { Episode, NovelRecord } from '@/lib'
 import type { DownloadJob } from '@/api'
@@ -37,6 +38,11 @@ function setBookReading(status: ReadingState, range?: { startIndex: number; endI
   emit('update-reading', range ? { scope: 'range', ...range, status } : { scope: 'book', status })
 }
 function setChapterReading(status: ReadingState, key: string): void {
+  if (key === READ_PREFIX_KEY) {
+    const indices = [...readPrefixIndices.value]
+    if (indices.length) emit('update-reading', { scope: 'range', startIndex: Math.min(...indices), endIndex: Math.max(...indices), status })
+    return
+  }
   emit('update-reading', key === 'all' ? { scope: 'book', status } : { scope: 'chapter', chapterIndex: key === 'loose' ? null : Number(key.slice(1)), status })
 }
 const translationStates = computed(() => new Map((props.translations ?? []).map((item) => [item.index, item])))
@@ -44,6 +50,10 @@ const translatedCount = computed(() => (props.translations ?? []).filter((item) 
 const rangeInput = ref('')
 const concurrency = defineModel<number>('concurrency', { default: 4 })
 const collapsed = ref<Set<string>>(new Set())
+const readCollapseActive = ref(false)
+const collapsedBeforeRead = ref<Set<string> | null>(null)
+const readPrefixIndices = ref(new Set<number>())
+const READ_PREFIX_KEY = 'read-prefix'
 /** 作品简介（あらすじ）默认折叠，长简介不必占满首屏 */
 const summaryOpen = ref(false)
 
@@ -67,7 +77,7 @@ interface Group {
   done: number
 }
 
-const groups = computed<Group[]>(() => {
+const originalGroups = computed<Group[]>(() => {
   const { chapters, episodes } = props.catalog
   if (chapters.length === 0) {
     return [{ key: 'all', title: '全部话', episodes, done: episodes.filter((e) => props.downloaded.has(e.index)).length }]
@@ -91,6 +101,22 @@ const groups = computed<Group[]>(() => {
     })
   }
   return list
+})
+
+const canCollapseRead = computed(() => !!props.reading && readEpisodePrefix(props.catalog.episodes, readingByIndex.value).length > 0)
+const groups = computed<Group[]>(() => {
+  if (!readCollapseActive.value) return originalGroups.value
+  const prefix = props.catalog.episodes.filter(episode => readPrefixIndices.value.has(episode.index))
+  if (!prefix.length) return originalGroups.value
+  const temporary: Group = {
+    key: READ_PREFIX_KEY,
+    title: `已读 · 第 ${prefix[0]!.index}–${prefix[prefix.length - 1]!.index} 话`,
+    episodes: prefix,
+    done: prefix.filter(episode => props.downloaded.has(episode.index)).length,
+  }
+  const remaining = withoutReadPrefix(originalGroups.value, readPrefixIndices.value)
+    .map(group => ({ ...group, done: group.episodes.filter(episode => props.downloaded.has(episode.index)).length }))
+  return [temporary, ...remaining]
 })
 
 const total = computed(() => props.catalog.episodes.length)
@@ -151,11 +177,30 @@ function isCollapsed(key: string): boolean {
 }
 
 function expandAll(): void {
+  if (readCollapseActive.value) return
   collapsed.value = new Set()
 }
 
 function collapseAll(): void {
+  if (readCollapseActive.value) return
   collapsed.value = new Set(groups.value.map((group) => group.key))
+}
+
+function collapseRead(): void {
+  if (readCollapseActive.value) {
+    collapsed.value = collapsedBeforeRead.value ? new Set(collapsedBeforeRead.value) : new Set()
+    collapsedBeforeRead.value = null
+    readPrefixIndices.value = new Set()
+    readCollapseActive.value = false
+    return
+  }
+  if (!props.reading) return
+  const prefix = readEpisodePrefix(props.catalog.episodes, readingByIndex.value)
+  if (!prefix.length) return
+  collapsedBeforeRead.value = new Set(collapsed.value)
+  readPrefixIndices.value = new Set(prefix.map(episode => episode.index))
+  collapsed.value = new Set([READ_PREFIX_KEY])
+  readCollapseActive.value = true
 }
 
 function submitRange(): void {
@@ -168,7 +213,10 @@ function submitRange(): void {
 watch(
   () => props.catalog.source.novelId,
   () => {
-    collapsed.value = new Set(groups.value.slice(1).map((group) => group.key))
+    collapsed.value = new Set(originalGroups.value.slice(1).map((group) => group.key))
+    readPrefixIndices.value = new Set()
+    readCollapseActive.value = false
+    collapsedBeforeRead.value = null
     rangeInput.value = ''
     summaryOpen.value = false
   },
@@ -278,13 +326,17 @@ watch(
     <div class="list-head">
       <span class="eyebrow eyebrow--faint">Contents</span>
       <div class="list-tools">
-        <CompactButton variant="secondary" @click="expandAll">
+        <CompactButton variant="secondary" :disabled="readCollapseActive" @click="expandAll">
           展开全部
           <template #icon><span class="contents-toggle-icon contents-toggle-icon--expand" /></template>
         </CompactButton>
-        <CompactButton variant="secondary" @click="collapseAll">
+        <CompactButton variant="secondary" :disabled="readCollapseActive" @click="collapseAll">
           折叠全部
           <template #icon><span class="contents-toggle-icon contents-toggle-icon--collapse" /></template>
+        </CompactButton>
+        <CompactButton variant="secondary" :disabled="!readCollapseActive && !canCollapseRead" :title="readCollapseActive ? '恢复原目录和展开状态' : '把更早的已读话收进临时分组，保留首个未读话前两话'" @click="collapseRead">
+          {{ readCollapseActive ? '恢复全部' : '折叠已读' }}
+          <template #icon><span class="contents-toggle-icon contents-toggle-icon--read" /></template>
         </CompactButton>
       </div>
     </div>
@@ -587,6 +639,8 @@ watch(
 
 .list-head {
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
   margin-top: 28px;
@@ -595,6 +649,8 @@ watch(
 
 .list-tools {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 7px;
   font-size: 11px;
@@ -606,6 +662,7 @@ watch(
   mask: var(--contents-toggle-icon) center / contain no-repeat;
 }
 .contents-toggle-icon--expand { --contents-toggle-icon: url('/icons/chevron.down.svg'); }
+.contents-toggle-icon--read { --contents-toggle-icon: url('/icons/flag.pattern.checkered.svg'); }
 .contents-toggle-icon--collapse { --contents-toggle-icon: url('/icons/chevron.up.svg'); }
 
 .episode-list {
