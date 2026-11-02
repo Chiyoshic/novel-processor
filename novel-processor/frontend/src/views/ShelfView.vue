@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DeleteIconButton from '@/components/DeleteIconButton.vue'
+import CompactButton from '@/components/CompactButton.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { LibraryEntry, LibraryFacets, NovelSort, ProgressFilter } from '@/api'
@@ -190,10 +192,11 @@ onUnmounted(() => {
         <span class="summary">{{ summary }}</span>
       </div>
       <div class="head-right">
-        <RouterLink to="/trash" class="text-btn">
-          回收站<template v-if="facets && facets.trashed > 0"> ({{ facets.trashed }})</template>
-        </RouterLink>
-        <button class="text-btn" type="button" @click="handleSync">重建索引</button>
+        <DeleteIconButton to="/trash" :label="`回收站${facets && facets.trashed > 0 ? `（${facets.trashed} 部作品）` : ''}`" />
+        <CompactButton variant="secondary" @click="handleSync">
+          重建索引
+          <template #icon><span class="reindex-icon" /></template>
+        </CompactButton>
       </div>
     </div>
 
@@ -210,15 +213,15 @@ onUnmounted(() => {
       <AppSelect v-model="sort" label="排序" :options="sortOptions" />
     </div>
 
-    <section v-if="facets" class="filters">
-      <div class="filter-heading"><button class="filter-toggle" type="button" :aria-expanded="filtersOpen" aria-controls="shelf-filter-content" @click="filtersOpen = !filtersOpen">筛选<span v-if="filterCount"> · {{ filterCount }} 项生效</span><span aria-hidden="true">{{ filtersOpen ? '−' : '＋' }}</span></button><button v-if="filterCount" class="filter-clear" type="button" @click="clearFilters">清空筛选</button></div>
+    <section v-if="facets" class="filters" :class="{ 'filters--collapsed': !filtersOpen }">
+      <div class="filter-heading"><button class="filter-toggle" type="button" :aria-expanded="filtersOpen" aria-controls="shelf-filter-content" @click="filtersOpen = !filtersOpen">筛选<span v-if="filterCount"> · {{ filterCount }} 项生效</span><span class="filter-chevron" :class="{ 'filter-chevron--up': filtersOpen }" aria-hidden="true" /></button><button v-if="filterCount" class="filter-clear" type="button" @click="clearFilters">清空筛选</button></div>
       <div v-show="filtersOpen" id="shelf-filter-content">
       <FilterChips v-model="status" label="状态" :options="facets.status" />
       <FilterChips v-model="progress" label="下载进度" :options="progressOptions" />
       <FilterChips v-model="readingProgress" label="阅读进度" :options="readingProgressOptions" />
       <FilterChips v-model="genre" label="题材" :options="facets.genre" />
       <FilterChips v-if="siteOptions.length > 1" v-model="site" label="站点" :options="siteOptions" />
-      <div v-if="facets.tags.length" class="tag-filter"><button class="filter-toggle tag-filter-toggle" type="button" :aria-expanded="tagsOpen" aria-controls="shelf-tag-filter" @click="tagsOpen = !tagsOpen">标签<span v-if="tag" class="selected-tag"> · {{ tag }}</span><span aria-hidden="true">{{ tagsOpen ? '−' : '＋' }}</span></button><div v-show="tagsOpen" id="shelf-tag-filter"><FilterChips v-model="tag" label="标签" :options="facets.tags" /></div></div>
+      <FilterChips v-if="facets.tags.length" v-model="tag" v-model:expanded="tagsOpen" collapsible label="标签" :options="facets.tags" />
       </div>
     </section>
 
@@ -251,9 +254,42 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.filter-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }.filter-toggle { display: inline-flex; align-items: center; justify-content: flex-start; gap: 10px; min-height: 44px; padding: 8px 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; }.filter-toggle > span:last-child { color: var(--blue-dark); }.filter-clear { min-height: 44px; padding: 8px 0 8px 12px; background: none; color: var(--blue-dark); font-size: 12px; cursor: pointer; }.tag-filter { margin-top: 4px; }.tag-filter-toggle { max-width: 100%; }.selected-tag { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.tag-filter-toggle > span:last-child { flex: none; }
+.filter-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 0;
+  background: none;
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.filter-heading > .filter-toggle { flex: 1; font-size: 15px; font-weight: 600; }
+.filter-heading > .filter-toggle .filter-chevron { margin-left: auto; }
+.filter-chevron {
+  display: block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: var(--blue-dark);
+  -webkit-mask: url('/icons/chevron.down.svg') center / contain no-repeat;
+  mask: url('/icons/chevron.down.svg') center / contain no-repeat;
+}
+.filter-chevron--up {
+  -webkit-mask-image: url('/icons/chevron.up.svg');
+  mask-image: url('/icons/chevron.up.svg');
+}
+.filter-clear { min-height: 44px; padding: 8px 0 8px 12px; background: none; color: var(--blue-dark); font-size: 12px; cursor: pointer; }
+.filters.filters--collapsed { height: var(--shelf-control-height); padding-block: 0; border-radius: 999px; }
+.filters--collapsed .filter-heading { height: 100%; }
+.filters--collapsed .filter-heading > button { height: 100%; min-height: 0; padding-block: 0; }
 
 .shelf {
+  --shelf-control-height: 44px;
   flex: 1;
   padding-bottom: 56px;
 }
@@ -283,24 +319,16 @@ onUnmounted(() => {
   color: var(--faint);
 }
 
-.text-btn {
-  border: 0;
-  background: none;
-  padding: 0;
-  font-size: 11.5px;
-  color: var(--muted);
-  cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
-
 .head-right {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 8px;
 }
 
-.text-btn:hover {
-  color: var(--blue-dark);
+.reindex-icon {
+  background: currentColor;
+  -webkit-mask: url('/icons/square.split.bottomrightquarter.fill.svg') center / contain no-repeat;
+  mask: url('/icons/square.split.bottomrightquarter.fill.svg') center / contain no-repeat;
 }
 
 .toolbar {
@@ -316,7 +344,7 @@ onUnmounted(() => {
   gap: 10px;
   flex: 1;
   min-width: 0;
-  height: 44px;
+  height: var(--shelf-control-height);
   padding: 0 18px;
   border-radius: 999px;
   background: var(--white);
@@ -422,15 +450,14 @@ onUnmounted(() => {
   }
 }
 @media (max-width: 720px) {
-  .shelf { padding-bottom: 36px; }
+  .shelf { --shelf-control-height: 52px; padding-bottom: 36px; }
   .shelf-head { flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-top: 24px; }
   .head-left { flex-wrap: wrap; gap: 2px 9px; }
   .head-left h1 { font-size: 25px; line-height: 1.1; }
   .summary { font-size: 10px; }
   .head-right { gap: 10px; }
-  .text-btn { min-height: 40px; display: inline-flex; align-items: center; font-size: 11px; }
   .toolbar { margin-top: 10px; }
-  .search-shell { height: 52px; padding-inline: 18px; }
+  .search-shell { height: var(--shelf-control-height); padding-inline: 18px; }
   .search-shell input { font-size: 16px; }
   .search-icon, .search-icon svg { width: 20px; height: 20px; }
   .filters { margin-top: 12px; padding: 5px 12px; border-radius: 24px; }

@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import CountBadge from '@/components/CountBadge.vue'
+import RefreshIconButton from '@/components/RefreshIconButton.vue'
 import BackButton from '@/components/BackButton.vue'
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import type { LibraryEntry } from '@/api'
 import { api } from '@/api'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -15,7 +17,6 @@ const error = ref<string | null>(null)
 const pendingPurge = ref<LibraryEntry | null>(null)
 const pendingEmpty = ref(false)
 
-const emptyHint = computed(() => `回收站中共 ${total.value} 部作品`)
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -88,17 +89,15 @@ onMounted(() => void load())
   <main class="trash section-wrap">
     <nav class="crumbs">
       <BackButton to="/">返回书架</BackButton>
-      <span class="crumb-sep">/</span>
-      <span class="crumb-current">回收站</span>
     </nav>
 
     <header class="trash-head">
       <div class="head-left">
         <h1>回收站</h1>
-        <span class="summary">{{ emptyHint }}</span>
+        <CountBadge :count="total" tone="danger" :label="`回收站共 ${total} 部作品`" />
       </div>
       <div class="head-actions">
-        <button class="text-btn" type="button" :disabled="loading || busy" @click="load">刷新</button>
+        <RefreshIconButton :loading="loading" :disabled="busy" @click="load" />
         <button
           v-if="items.length > 0"
           class="pill pill--ghost pill--small"
@@ -112,7 +111,7 @@ onMounted(() => void load())
     </header>
 
     <p class="hint">
-      移入回收站的作品只是从书架隐藏，目录与正文仍保留在磁盘上。永久删除才会移除文件，且不可撤销。
+      回收站保留目录与正文；永久删除不可恢复。
     </p>
 
     <div v-if="loading" class="state">
@@ -194,13 +193,7 @@ onMounted(() => void load())
   color: var(--faint);
 }
 
-.crumb-sep {
-  color: #c9d5db;
-}
 
-.crumb-current {
-  color: var(--ink);
-}
 
 .trash-head {
   display: flex;
@@ -221,11 +214,6 @@ onMounted(() => void load())
   letter-spacing: -0.05em;
 }
 
-.summary {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--faint);
-}
 
 .head-actions {
   display: flex;
@@ -233,24 +221,8 @@ onMounted(() => void load())
   gap: 16px;
 }
 
-.text-btn {
-  border: 0;
-  background: none;
-  padding: 0;
-  font-size: 11.5px;
-  color: var(--muted);
-  cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
 
-.text-btn:hover:not(:disabled) {
-  color: var(--blue-dark);
-}
 
-.text-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 .hint {
   margin-top: 14px;
@@ -369,7 +341,7 @@ onMounted(() => void load())
   .trash-head { flex-wrap: wrap; align-items: center; gap: 4px 16px; }
   .head-left { flex-wrap: wrap; gap: 4px 10px; }
   .head-actions { flex-wrap: wrap; }
-  .text-btn, .text-danger { min-height: 44px; }
+  .text-danger { min-height: 44px; }
   .row { padding: 14px 16px; gap: 4px; }
   .row-main { width: 100%; }
   .row-title { white-space: normal; overflow-wrap: anywhere; }

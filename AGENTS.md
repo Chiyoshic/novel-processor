@@ -72,7 +72,7 @@
 - 使用 `to` 支持 Vue Router 导航；需要保存阅读状态等前置逻辑时，保留原 `@click` 处理。
 - 范围包含详情、翻译、设置、回收站、阅读器顶部、阅读器返回目录、错误态返回等。
 - “上一话／下一话”属于翻页，不是返回导航，不应机械替换。
-- 阅读器原有裸露的翻页按钮样式，不得覆盖共用 BackButton 的胶囊外观。
+- 阅读器是明确的视觉例外：返回导航使用独立 ReaderBackButton（透明底、文字箭头、Noto Serif），不使用全局BackButton胶囊；其他页面继续统一BackButton。
 
 ### 已确认的使用方式
 
@@ -86,7 +86,7 @@
 
 ## 5. 全局下拉框 AppSelect
 
-- **全部页面使用统一 `AppSelect`，不新增原生 `<select>` 或自行实现的下拉菜单。**
+- 管理/书架等页面统一使用 `AppSelect`，不新增原生 `<select>` 或自行实现的下拉交互。阅读器使用 `reader/ReaderSelect.vue`：只复用AppSelect行为，采用独立书页样式。
 - 组件在 `frontend/src/main.ts` 全局注册，类型声明在 `frontend/src/components.d.ts`，页面无需重复 import。
 - 选项形状由 `frontend/src/components/select-option.ts` 定义：`value`、`label`、可选 `hint`、`disabled`。
 - `value` 支持 string / number；数值选项必须保持 number，不能迁移后变成字符串再靠隐式转换处理。
@@ -249,3 +249,21 @@ git diff --check
 - 共用 TranslationTaskPanel 与创建任务/材料维护一致：移除外围嵌套背景卡片、统计小卡片；以语义标题/留白/分区线组织任务状态、指标、输出和记录。调用记录使用 AppTabs inverted；自动跟随用 PillMultiSelect；停止任务用danger secondary compact，诊断导出用secondary compact。只为可滚动原始输出保留纸色无描边区域，保留计时、重试、逐次输出、日志、自动跟随与取消逻辑。
 
 - 章节翻译“选择章节”为15px/600主色分组标题；内部起始话号、结束话号、从最小未译话号开始为次级字段标题，13px/500、`--muted`，不得与父级分组同等强调。
+
+- 首页回收站入口和详情删除共用 DeleteIconButton：红色 trash.circle.fill.svg，44px点击区域、28px图形、夜间浅红；回收站为路由链接且标题/无障碍文案保留回收站数量。首页重建索引使用secondary compact，右侧square.split.bottomrightquarter.fill.svg。
+
+- 首页筛选区及标签栏展开/收起使用chevron.up.svg / chevron.down.svg。整个筛选区收起后为全圆角胶囊，与搜索栏共享高度（桌面44px、手机52px），消除容器上下padding叠加；标签栏展开后FilterChips使用hide-label，避免重复“标签”，保留无障碍分组名称。
+
+- 首页“筛选”为15px/600主色父级标题；“标签”复用FilterChips的collapsible与expanded绑定，与状态/下载进度等行共享标签字号、颜色、列宽及响应式对齐，只出现一次标签文案；保留独立收起展开和向上/向下图标。
+
+- 回收站刷新与作品详情更新目录共用 RefreshIconButton：44px点击区域、28px arrow.clockwise.circle.fill.svg主题色图标，loading时旋转并禁用，支持label/loadingLabel；减少动态效果偏好下关闭旋转。
+
+- 数量气泡共用CountBadge（count、tone、可选无障碍label）；材料角色/术语/规则标题使用默认主题色，回收站标题右侧使用danger红色、保留0数量。回收站不显示“/ 回收站”面包屑与冗长数量句，说明精简为“回收站保留目录与正文；永久删除不可恢复。”
+
+- 角色aliases保持原字符串数组结构，初始化/逐话增补/材料维护提示词均允许原文和中文别名，重点补足可明确归属、实际正文使用的中文名字/简称，以支持人物下划线。逐话对出现的旧角色使用原序号update渐进补齐，完整value保留既有原名、固定译名、全部别名、来源及无关字段；不重复create、不破坏旧数据、不臆造歧义别名。仅更新提示词，不改数据库/schema/匹配器，不自动重写历史材料。
+
+- 阅读器返回与选择框不套用全局蓝色胶囊：ReaderBackButton为透明衬线文字及左箭头；ReaderSelect为透明触发器、细下划线、无圆形箭头底，菜单为纸色小圆角。字体Noto Serif，颜色取阅读器作用域paper/ink/muted/line/reader-brand，适配自定义纸色、夜间与文字设置，不用硬编码白底或蓝色选中背景。
+
+- 阅读器顶部返回导航后不显示“／第x话”，保留正文中的章节信息，避免重复。
+
+- 阅读器手机端阅读状态和阅读设置放在同一条独立的新行，原文/中文译文切换保留上行；桌面维持原布局。

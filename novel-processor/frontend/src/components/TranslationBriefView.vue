@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import NormalButton from './NormalButton.vue'
+import CountBadge from './CountBadge.vue'
 import { detectLang } from '@/utils/lang'
 import type { TranslationInitialization } from '@shared/translation'
 const props = defineProps<{ saved: TranslationInitialization }>()
@@ -39,7 +40,7 @@ const updated = computed(() => new Date(props.saved.updatedAt).toLocaleString('z
     <section class="brief-section"><h3>剧情梗概</h3><p class="prose">{{ brief.novel.plot_summary_zh }}</p></section>
 
     <section class="brief-section">
-      <h3>角色译名 <span class="count">{{ brief.characters.length }}</span></h3>
+      <h3>角色译名 <CountBadge :count="brief.characters.length" /></h3>
       <div v-if="brief.characters.length" class="character-grid">
         <article v-for="(character, index) in brief.characters" :key="index" class="character-card">
           <header class="character-heading"><div><h4>{{ character.chinese_name }}</h4><p class="original-name" :lang="detectLang(character.original_name)">{{ character.original_name }}</p></div></header>
@@ -54,12 +55,12 @@ const updated = computed(() => new Date(props.saved.updatedAt).toLocaleString('z
 
     <section class="brief-section"><h3>语言风格</h3><dl class="style-grid"><div v-for="[label, value] in styles" :key="label" class="style-item"><dt>{{ label }}</dt><dd>{{ value || '未确定' }}</dd></div></dl></section>
 
-    <section class="brief-section"><h3>术语对照 <span class="count">{{ brief.terminology.length }}</span></h3>
+    <section class="brief-section"><h3>术语对照 <CountBadge :count="brief.terminology.length" /></h3>
       <div v-if="brief.terminology.length" class="terms"><article v-for="(term, index) in brief.terminology" :key="index" class="term"><div class="term-pair"><span :lang="detectLang(term.original)">{{ term.original }}</span><span class="term-arrow" aria-label="译为">→</span><strong>{{ term.chinese }}</strong><span v-if="term.category_zh" class="tag">{{ term.category_zh }}</span></div><p v-if="term.notes_zh" class="term-notes">{{ term.notes_zh }}</p></article></div>
       <p v-else class="empty">所选材料中暂无专有术语。</p>
     </section>
 
-    <section v-for="group in ruleGroups" :key="group.title" class="brief-section"><h3>{{ group.title }} <span class="count">{{ group.items.length }}</span></h3><ul v-if="group.items.length"><li v-for="(item, index) in group.items" :key="index">{{ item }}</li></ul><p v-else class="empty">{{ group.title === '待确认事项' ? '暂无待确认事项。' : '暂无记录。' }}</p></section>
+    <section v-for="group in ruleGroups" :key="group.title" class="brief-section"><h3>{{ group.title }} <CountBadge :count="group.items.length" /></h3><ul v-if="group.items.length"><li v-for="(item, index) in group.items" :key="index">{{ item }}</li></ul><p v-else class="empty">{{ group.title === '待确认事项' ? '暂无待确认事项。' : '暂无记录。' }}</p></section>
 
     <details class="source"><summary>材料来源与原始 JSON</summary><dl class="source-meta"><dt>选取范围</dt><dd>前 {{ saved.request.chapterCount }} {{ saved.request.selectionUnit === 'chapter' ? '章' : '话' }} · {{ saved.request.includeSummary ? '含作品简介' : '不含作品简介' }} · {{ saved.request.includePreface ? '含前言（如有）' : '不含前言' }}</dd><dt>翻译要求</dt><dd>{{ saved.request.requirements || '未设置额外要求' }}</dd><dt>思考等级</dt><dd>{{ saved.request.effectiveReasoningLevel }}</dd><template v-if="saved.request.generation?.startedAt"><dt>模型调用开始</dt><dd>{{ new Date(saved.request.generation.startedAt).toLocaleString('zh-CN', { hour12: false }) }}</dd></template><template v-if="saved.request.generation?.finishedAt"><dt>模型调用结束</dt><dd>{{ new Date(saved.request.generation.finishedAt).toLocaleString('zh-CN', { hour12: false }) }}</dd></template></dl><ol class="episode-list"><li v-for="episode in saved.request.episodes" :key="episode.index">第 {{ episode.index }} 话 · <span :lang="detectLang(episode.title)">{{ episode.title }}</span></li></ol><pre>{{ JSON.stringify(brief, null, 2) }}</pre></details>
   </section>
@@ -79,7 +80,7 @@ const updated = computed(() => new Date(props.saved.updatedAt).toLocaleString('z
 
 .brief-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 4px 0 30px; }
 .book-heading { min-width: 0; }
-.saved-badge, .tag, .count { display: inline-flex; align-items: center; border-radius: 999px; background: var(--blue-soft); color: var(--blue-dark); font-size: 12px; line-height: 1.5; padding: 4px 10px; }
+.saved-badge, .tag { display: inline-flex; align-items: center; border-radius: 999px; background: var(--blue-soft); color: var(--blue-dark); font-size: 12px; line-height: 1.5; padding: 4px 10px; }
 h2 { font-size: clamp(24px, 3vw, 32px); font-weight: 700; line-height: 1.65; margin: 16px 0 14px; }
 .export-json-icon {
   display: block;
@@ -94,7 +95,6 @@ h2 { font-size: clamp(24px, 3vw, 32px); font-weight: 700; line-height: 1.65; mar
 .brief-header > button { flex-shrink: 0; }
 .brief-section { padding: 30px 0; border-top: 1px solid var(--line); }
 h3 { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; line-height: 1.7; margin: 0 0 20px; }
-.count { padding: 2px 9px; font-weight: 500; }
 .prose { font-size: 16px; line-height: 2.15; white-space: pre-wrap; }
 .character-grid, .style-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; }
 .character-card, .style-item { background: transparent; border: 0; padding: 0; border-radius: 0; min-width: 0; }

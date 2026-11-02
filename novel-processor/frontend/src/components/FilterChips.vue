@@ -6,17 +6,23 @@ withDefaults(
     label: string
     options: FacetBucket[]
     allLabel?: string
+    hideLabel?: boolean
+    collapsible?: boolean
   }>(),
-  { allLabel: '全部' },
+  { allLabel: '全部', hideLabel: false, collapsible: false },
 )
 
 const model = defineModel<string>({ default: '' })
+const expanded = defineModel<boolean>('expanded', { default: true })
 </script>
 
 <template>
-  <div v-if="options.length > 0" class="filter-row">
-    <span class="filter-label">{{ label }}</span>
-    <div class="chips">
+  <div v-if="options.length > 0" class="filter-row" role="group" :aria-label="label">
+    <button v-if="collapsible" class="filter-label filter-label-toggle" type="button" :aria-expanded="expanded" @click="expanded = !expanded">
+      {{ label }}<span class="filter-label-chevron" :class="{ 'is-expanded': expanded }" aria-hidden="true" />
+    </button>
+    <span v-else-if="!hideLabel" class="filter-label">{{ label }}</span>
+    <div v-show="!collapsible || expanded" class="chips">
       <button
         type="button"
         class="chip-btn"
@@ -59,6 +65,30 @@ const model = defineModel<string>({ default: '' })
   text-transform: uppercase;
   color: var(--muted);
 }
+
+.filter-label-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding-inline: 0;
+  padding-bottom: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 400;
+  line-height: normal;
+  text-align: left;
+  cursor: pointer;
+}
+.filter-label-chevron {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  background: var(--blue-dark);
+  -webkit-mask: url('/icons/chevron.down.svg') center / contain no-repeat;
+  mask: url('/icons/chevron.down.svg') center / contain no-repeat;
+}
+.filter-label-chevron.is-expanded { -webkit-mask-image: url('/icons/chevron.up.svg'); mask-image: url('/icons/chevron.up.svg'); }
 
 .chips {
   display: flex;

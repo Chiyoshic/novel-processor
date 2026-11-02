@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import BackButton from '@/components/BackButton.vue'
+import ReaderBackButton from '@/components/reader/ReaderBackButton.vue'
+import ReaderSelect from '@/components/reader/ReaderSelect.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { EpisodeContent, NovelRecord } from '@/lib'
@@ -258,9 +259,7 @@ onUnmounted(() => {
 <template>
   <main class="reader-page">
     <nav class="crumbs section-wrap" aria-label="阅读导航">
-      <BackButton :title="novelTitle || '返回目录'" @click="backToNovel">返回目录</BackButton>
-      <span class="crumb-sep" aria-hidden="true">／</span>
-      <span class="crumb-current">第 {{ episodeIndex }} 话</span>
+      <ReaderBackButton :title="novelTitle || '返回目录'" @click="backToNovel">返回目录</ReaderBackButton>
     </nav>
 
     <div class="reading-tools section-wrap">
@@ -269,10 +268,12 @@ onUnmounted(() => {
         <button type="button" :aria-pressed="translated" :disabled="!hasTranslation" @click="setLanguage('translation')">中文译文</button>
       </div>
       <RouterLink v-if="content && !loading && !hasTranslation" class="translation-link" :to="{ name: 'translation', params: { site, novelId }, query: { step: 'episodes' } }">去翻译本话 ↗</RouterLink>
-      <label v-if="content && !loading" class="reading-state-control">阅读状态<AppSelect :model-value="readingState" label="阅读状态" :disabled="!!readingSaving || navigating" :options="readingStates.map(state => ({ value: state, label: readingLabels[state] }))" @update:model-value="editReading" /></label>
+      <div class="reader-controls-row">
+      <label v-if="content && !loading" class="reading-state-control">阅读状态<ReaderSelect :model-value="readingState" label="阅读状态" :disabled="!!readingSaving || navigating" :options="readingStates.map(state => ({ value: state, label: readingLabels[state] }))" @update:model-value="editReading" /></label>
       <button class="reading-settings-toggle" type="button" :aria-expanded="settingsOpen" aria-controls="reader-settings" @click="settingsOpen = !settingsOpen">
         阅读设置 <span aria-hidden="true">{{ settingsOpen ? '−' : '＋' }}</span>
       </button>
+      </div>
       <p v-if="content?.translation?.stale" class="translation-note">原文已更新，当前译文可能过期。</p>
       <p v-if="content && route.query.language === 'translation' && !hasTranslation" class="translation-note">本话尚无译文，当前显示原文。</p>
       <p v-if="readingError" class="reading-save-error" role="alert">{{ readingError }}<button type="button" :disabled="!!readingSaving" @click="saveReadingStatus(pendingReadingState).catch(() => {})">重新保存</button></p>
@@ -364,13 +365,13 @@ onUnmounted(() => {
             <span aria-hidden="true">←</span>
             <span>上一话</span>
           </button>
-          <BackButton @click="backToNovel">返回目录</BackButton>
+          <ReaderBackButton @click="backToNovel">返回目录</ReaderBackButton>
           <button class="pill pill--small" type="button" :disabled="!hasNext || navigating" @click="go(1)">
             <span>下一话</span>
             <span aria-hidden="true">→</span>
           </button>
       </nav>
-      <BackButton v-if="content && !loading && !hasNext" class="finish-reading" :disabled="!reachedEnd || navigating || !!readingSaving" @click="finishReading">标记已读并返回目录</BackButton>
+      <ReaderBackButton v-if="content && !loading && !hasNext" class="finish-reading" :disabled="!reachedEnd || navigating || !!readingSaving" @click="finishReading">标记已读并返回目录</ReaderBackButton>
     </div>
     <aside v-if="activeCharacter" ref="popover" class="character-popover" role="dialog" aria-label="人物简介" lang="zh-CN" :style="{ left: `${activeCharacter.left}px`, top: `${activeCharacter.top}px` }" @pointerenter="cancelDismiss" @pointerleave="dismissCharacter" @focusin="cancelDismiss" @focusout="dismissCharacter">
       <header><span>人物笺</span><button type="button" aria-label="关闭人物简介" @click="closeCharacter">关闭 ×</button></header>
@@ -401,8 +402,6 @@ onUnmounted(() => {
   line-height: 1.8;
   color: var(--muted);
 }
-.crumb-sep, .crumb-current { flex: none; }
-.crumb-sep { color: var(--faint); }
 
 .reading-tools {
   display: flex;
@@ -438,6 +437,7 @@ onUnmounted(() => {
 .translation-link { text-decoration: underline; text-underline-offset: 5px; }
 .translation-note { flex-basis: 100%; }
 
+.reader-controls-row { display: contents; }
 .reading-state-control { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .reading-state-control { min-width: 0; }
 .reading-save-error { flex-basis: 100%; color: var(--muted); font-size: 13px; line-height: 1.9; }
@@ -594,6 +594,9 @@ onUnmounted(() => {
   .reader-page .section-wrap { width: calc(100% - 40px); }
   .crumbs { padding: 10px 0; font-size: 12px; gap: 8px; }
   .reading-tools { padding-bottom: 16px; gap: 10px 16px; }
+  .reader-controls-row { display: flex; flex: 0 0 100%; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+  .reader-controls-row .reading-state-control { flex: 1; }
+  .reader-controls-row .reading-settings-toggle { flex: none; white-space: nowrap; padding-left: 0; }
   .reading-sheet { padding: 36px 0 0; }
   .head { padding-bottom: 28px; }
   .book-title { font-size: 13px; }

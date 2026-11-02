@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RefreshIconButton from '@/components/RefreshIconButton.vue'
+import DeleteIconButton from '@/components/DeleteIconButton.vue'
 import BackButton from '@/components/BackButton.vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -174,10 +176,8 @@ onUnmounted(() => {
         <RouterLink class="action-icon-button" aria-label="AI 翻译" title="AI 翻译" :to="{ name: 'translation', params: { site, novelId } }">
           <span class="action-icon action-icon--translate" aria-hidden="true" />
         </RouterLink>
-        <button class="action-icon-button" type="button" :disabled="refreshing || !!downloadBusy" :aria-label="refreshing ? '正在更新目录' : '更新目录'" :title="refreshing ? '正在更新目录' : '更新目录'" :aria-busy="refreshing" @click="handleRefresh">
-          <span class="action-icon action-icon--refresh" :class="{ 'is-refreshing': refreshing }" aria-hidden="true" />
-        </button>
-        <button class="action-icon-button action-icon-button--danger" type="button" :disabled="!!downloadBusy || refreshing" aria-label="删除作品" title="删除作品" @click="pendingTrash = true"><span class="action-icon action-icon--trash" aria-hidden="true" /></button>
+        <RefreshIconButton :loading="refreshing" :disabled="!!downloadBusy" label="更新目录" loading-label="正在更新目录" @click="handleRefresh" />
+        <DeleteIconButton :disabled="!!downloadBusy || refreshing" label="删除作品" @click="pendingTrash = true" />
         <CompactButton v-if="currentReadingIndex !== undefined" class="continue-reading" :title="`阅读第 ${currentReadingIndex} 话`" @click="openEpisode(currentReadingIndex)">
           继续阅读
           <template #icon><span class="continue-reading-icon" /></template>
@@ -268,21 +268,12 @@ onUnmounted(() => {
   transition: background .18s ease, opacity .18s ease;
 }
 .action-icon-button:hover:not(:disabled) { background: var(--blue-soft); }
-.action-icon-button--danger { color: #c34f49; }
-.action-icon-button--danger:hover:not(:disabled) { background: rgb(195 79 73 / 10%); }
 .action-icon-button:disabled { opacity: .45; cursor: not-allowed; }
 .action-icon { display: block; width: 28px; height: 28px; background: currentColor; -webkit-mask: var(--action-icon) center / contain no-repeat; mask: var(--action-icon) center / contain no-repeat; }
 /* 相邻图标的 44px 点击区域比 28px 图形每侧多 8px；补齐胶囊侧的视觉间距。 */
 .crumb-actions .continue-reading { flex: none; margin-inline-start: 8px; }
 .continue-reading-icon { display: block; flex: none; width: 12px; height: 12px; background: currentColor; -webkit-mask: url('/icons/play.fill.svg') center / contain no-repeat; mask: url('/icons/play.fill.svg') center / contain no-repeat; }
 .action-icon--translate { --action-icon: url('/icons/translate.svg'); width: 32px; }
-.action-icon--refresh { --action-icon: url('/icons/arrow.clockwise.circle.fill.svg'); }
-.action-icon--trash { --action-icon: url('/icons/trash.circle.fill.svg'); }
-.is-refreshing { animation: refresh-spin 1.2s linear infinite; }
-@keyframes refresh-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .is-refreshing { animation: none; } }
-:global(html[data-theme='dark']) .action-icon-button--danger { color: #ed9289; }
-
 .state {
   display: flex;
   flex-direction: column;
