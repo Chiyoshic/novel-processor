@@ -21,3 +21,26 @@ test('实际抓取状态经下载服务透传；成功失败均结束，已存�
   const skipped = await library.downloadEpisodes('https://example.invalid/book/', { indices: [1], onEpisodeState: (index, active) => { events.push([index, active]) } })
   assert.equal(skipped.skipped, 1); assert.deepEqual(events, [])
 })
+
+test('中途取消保留已完成的话，取消不计为失败且不再调度后续话', async () => {
+  const controller = new AbortController()
+  const calls: string[] = []
+  let startedSecond!: () => void
+  const second = new Promise<void>((resolve) => { startedSecond = resolve })
+  const http: HttpClient = { get: async (url, init) => {
+    calls.push(url)
+    if (url.includes('/2/')) {
+      startedSecond()
+      await new Promise<void>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))
+    }
+    return { url, status: 200, body: '' }
+  } }
+  const library = new NovelLibrary({ adapters: [adapter], http })
+  const downloading = library.downloadEpisodes('https://example.invalid/book/', { indices: [1, 2, 3], signal: controller.signal })
+  await second; controller.abort()
+  const result = await downloading
+  assert.equal(result.fetched, 1); assert.equal(result.failed.length, 0); assert.equal(calls.length, 2)
+  assert.ok(await library.readEpisode('https://example.invalid/book/', 1))
+  assert.equal(await library.readEpisode('https://example.invalid/book/', 2), null)
+  assert.equal(await library.readEpisode('https://example.invalid/book/', 3), null)
+})

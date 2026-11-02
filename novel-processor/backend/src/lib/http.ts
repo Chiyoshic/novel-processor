@@ -43,8 +43,15 @@ const DEFAULT_UA =
 
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504])
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function cancelled(): NovelError { return new NovelError('ABORTED', '请求被取消') }
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(cancelled())
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal?.removeEventListener('abort', abort)
+    const timer = setTimeout(() => { cleanup(); resolve() }, ms)
+    const abort = () => { clearTimeout(timer); cleanup(); reject(cancelled()) }
+    signal?.addEventListener('abort', abort, { once: true })
+  })
 }
 
 export class FetchHttpClient implements HttpClient {
@@ -84,15 +91,15 @@ export class FetchHttpClient implements HttpClient {
     let lastError: unknown = null
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      await this.acquire()
+      await this.acquire(init.signal)
 
       let result: HttpResponse | null = null
       let failure: unknown = null
       try {
-        await this.pace()
+        await this.pace(init.signal)
         result = await this.requestOnce(url, attempt, init.signal)
       } catch (err) {
-        failure = err
+        failure = init.signal?.aborted ? cancelled() : err
       } finally {
         this.release()
       }
@@ -105,7 +112,7 @@ export class FetchHttpClient implements HttpClient {
       if (!retryable || attempt === this.maxRetries) break
 
       const backoff = 800 * 2 ** attempt + Math.floor(Math.random() * 300)
-      await sleep(backoff)
+      await sleep(backoff, init.signal)
     }
 
     if (lastError instanceof NovelError) throw lastError
@@ -113,12 +120,23 @@ export class FetchHttpClient implements HttpClient {
   }
 
   /** 取得一个并发名额。 */
-  private async acquire(): Promise<void> {
+  private async acquire(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) throw cancelled()
     if (this.inFlight < this.concurrency) {
       this.inFlight += 1
       return
     }
-    await new Promise<void>((resolve) => this.waiting.push(resolve))
+    await new Promise<void>((resolve, reject) => {
+      const grant = () => { signal?.removeEventListener('abort', abort); resolve() }
+      const abort = () => {
+        const position = this.waiting.indexOf(grant)
+        if (position >= 0) this.waiting.splice(position, 1)
+        signal?.removeEventListener('abort', abort)
+        reject(cancelled())
+      }
+      this.waiting.push(grant)
+      signal?.addEventListener('abort', abort, { once: true })
+    })
     // 被唤醒时名额已由 release() 直接转交，此处无需再自增
   }
 
@@ -138,16 +156,18 @@ export class FetchHttpClient implements HttpClient {
    * 先同步计算并占用 `nextStartAt` 再 await，
    * 保证多并发下时间槽不会被重复分配。
    */
-  private async pace(): Promise<void> {
+  private async pace(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) throw cancelled()
     if (this.minIntervalMs <= 0) return
     const now = Date.now()
     const startAt = Math.max(now, this.nextStartAt)
     this.nextStartAt = startAt + this.minIntervalMs
     const wait = startAt - now
-    if (wait > 0) await sleep(wait)
+    if (wait > 0) await sleep(wait, signal)
   }
 
   private async requestOnce(url: string, attempt: number, externalSignal?: AbortSignal): Promise<HttpResponse> {
+    if (externalSignal?.aborted) throw cancelled()
     this.onRequest?.(url, attempt)
 
     const target = this.rewriteUrl ? this.rewriteUrl(url) : url

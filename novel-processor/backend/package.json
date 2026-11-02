@@ -13,7 +13,8 @@
     "test:translation": "node --import tsx --test scripts/translation-persistence.test.ts scripts/translation-stream.test.ts scripts/episode-translation.test.ts",
     "test:auth": "node --import tsx --test scripts/auth.test.ts",
     "test:maintenance": "node --import tsx --test scripts/brief-maintenance.test.ts",
-    "test:reading": "node --import tsx --test scripts/reading.test.ts"
+    "test:reading": "node --import tsx --test scripts/reading.test.ts",
+    "test:download": "node --import tsx --test scripts/download-state.test.ts scripts/download-cancel.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

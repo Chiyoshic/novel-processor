@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import type { NovelRecord } from '@/lib'
 import { api, type DownloadJob } from '@/api'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import CompactButton from '@/components/CompactButton.vue'
+import NormalButton from '@/components/NormalButton.vue'
 import NovelDetail from '@/components/NovelDetail.vue'
 import type { ReadingProgress, UpdateReading } from '@shared/reading'
 import type { EpisodeTranslationStatus } from '@shared/episode-translation'
@@ -23,6 +25,7 @@ const concurrency = ref(4)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const refreshing = ref(false)
+const stoppingDownload = ref(false)
 const pendingTrash = ref(false)
 const removing = ref(false)
 /** 下载任务的内存进度（来自 /status 的 job 字段） */
@@ -31,6 +34,18 @@ const job = ref<DownloadJob | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
 const entry = computed(() => catalog.value)
+const currentReadingIndex = computed(() => reading.value?.furthestReadingIndex ?? catalog.value?.episodes[0]?.index)
+const downloadBusy = computed(() => busy.value || (job.value?.running ? '抓取中' : null))
+async function handleStopDownload(): Promise<void> {
+  if (stoppingDownload.value || job.value?.stopping) return
+  stoppingDownload.value = true
+  try {
+    const result = await api.stopDownload(props.site, props.novelId)
+    job.value = result.job
+    await refreshProgress()
+  } catch (error) { notify(error instanceof Error ? error.message : '取消抓取失败', 'error') }
+  finally { stoppingDownload.value = false }
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -73,10 +88,9 @@ async function refreshProgress(): Promise<void> {
 }
 
 async function handleDownload(payload: { range?: string; all?: boolean; overwrite?: boolean }): Promise<void> {
-  if (busy.value) return
+  if (downloadBusy.value) return
   busy.value = payload.range ? `区间 ${payload.range}` : payload.all ? '全部' : '补缺失'
   // 600ms 一次：后端每话都会写索引，轮询能真实反映进度
-  pollTimer = setInterval(() => void refreshProgress(), 600)
   try {
     const result = await api.download(props.site, props.novelId, {
       range: payload.range,
@@ -87,14 +101,12 @@ async function handleDownload(payload: { range?: string; all?: boolean; overwrit
     await refreshProgress()
     const failed = result.failed.length
     notify(
-      failed > 0 ? `新抓 ${result.fetched} 话，${failed} 话失败` : `新抓 ${result.fetched} 话，跳过 ${result.skipped} 话`,
+      result.cancelled ? `抓取已取消，保留已抓取的 ${result.fetched} 话` : failed > 0 ? `新抓 ${result.fetched} 话，${failed} 话失败` : `新抓 ${result.fetched} 话，跳过 ${result.skipped} 话`,
       failed > 0 ? 'error' : 'ok',
     )
   } catch (err) {
     notify(err instanceof Error ? err.message : '下载失败', 'error')
   } finally {
-    if (pollTimer) clearInterval(pollTimer)
-    pollTimer = undefined
     busy.value = null
     await refreshProgress()
   }
@@ -140,7 +152,9 @@ async function confirmTrash(): Promise<void> {
 
 onMounted(() => {
   void load()
+  pollTimer = setInterval(() => { if (job.value?.running || busy.value) void refreshProgress() }, 600)
   translationPoll = setInterval(() => {
+    if (!job.value?.running && !busy.value) void refreshProgress()
     void api.episodeTranslations(props.site, props.novelId).then((value) => { translations.value = value.episodes }).catch(() => {})
   }, 3000)
 })
@@ -153,18 +167,23 @@ onUnmounted(() => {
 <template>
   <main class="novel section-wrap">
     <nav class="crumbs">
-      <RouterLink to="/" class="crumb">← 书架</RouterLink>
-      <span v-if="entry" class="crumb-sep">/</span>
-      <span v-if="entry" class="crumb-current">{{ entry.source.novelId }}</span>
+      <CompactButton variant="functional" class="back-to-shelf" title="返回书架" @click="router.push('/')">
+        返回书架
+        <template #leadingIcon><span class="back-to-shelf-icon" /></template>
+      </CompactButton>
 
       <div v-if="entry" class="crumb-actions">
         <RouterLink class="action-icon-button" aria-label="AI 翻译" title="AI 翻译" :to="{ name: 'translation', params: { site, novelId } }">
           <span class="action-icon action-icon--translate" aria-hidden="true" />
         </RouterLink>
-        <button class="action-icon-button" type="button" :disabled="refreshing || !!busy" :aria-label="refreshing ? '正在更新目录' : '更新目录'" :title="refreshing ? '正在更新目录' : '更新目录'" :aria-busy="refreshing" @click="handleRefresh">
+        <button class="action-icon-button" type="button" :disabled="refreshing || !!downloadBusy" :aria-label="refreshing ? '正在更新目录' : '更新目录'" :title="refreshing ? '正在更新目录' : '更新目录'" :aria-busy="refreshing" @click="handleRefresh">
           <span class="action-icon action-icon--refresh" :class="{ 'is-refreshing': refreshing }" aria-hidden="true" />
         </button>
-        <button class="action-icon-button action-icon-button--danger" type="button" :disabled="!!busy || refreshing" aria-label="删除作品" title="删除作品" @click="pendingTrash = true"><span class="action-icon action-icon--trash" aria-hidden="true" /></button>
+        <button class="action-icon-button action-icon-button--danger" type="button" :disabled="!!downloadBusy || refreshing" aria-label="删除作品" title="删除作品" @click="pendingTrash = true"><span class="action-icon action-icon--trash" aria-hidden="true" /></button>
+        <CompactButton v-if="currentReadingIndex !== undefined" class="continue-reading" :title="`阅读第 ${currentReadingIndex} 话`" @click="openEpisode(currentReadingIndex)">
+          继续阅读
+          <template #icon><span class="continue-reading-icon" /></template>
+        </CompactButton>
       </div>
     </nav>
 
@@ -176,10 +195,10 @@ onUnmounted(() => {
     <div v-else-if="error" class="state">
       <p class="state-title">{{ error }}</p>
       <div class="state-actions">
-        <button class="pill pill--small" type="button" :disabled="refreshing" @click="handleRefresh">
+        <NormalButton small :disabled="refreshing" @click="handleRefresh">
           <span>{{ refreshing ? '抓取中…' : '重新抓取目录' }}</span>
           <span class="pill__arrow" aria-hidden="true">↗</span>
-        </button>
+        </NormalButton>
         <RouterLink to="/" class="pill pill--ghost pill--small"><span>返回书架</span></RouterLink>
       </div>
     </div>
@@ -193,7 +212,9 @@ onUnmounted(() => {
       :reading="reading"
       :reading-saving="readingSaving"
       @update-reading="updateReading"
-      :busy="busy"
+      :busy="downloadBusy"
+      :stopping-download="stoppingDownload"
+      @stop-download="handleStopDownload"
       :job="job"
       @open="openEpisode"
       @download="handleDownload"
@@ -227,27 +248,21 @@ onUnmounted(() => {
   color: var(--faint);
 }
 
-.crumb {
-  color: var(--muted);
-  transition: color 0.2s ease;
-}
-
-.crumb:hover {
-  color: var(--blue-dark);
-}
-
-.crumb-sep {
-  color: #c9d5db;
-}
-
-.crumb-current {
-  color: var(--ink);
+.back-to-shelf { flex: none; }
+.back-to-shelf-icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask: url('/icons/arrowshape.turn.up.backward.fill.svg') center / contain no-repeat;
+  mask: url('/icons/arrowshape.turn.up.backward.fill.svg') center / contain no-repeat;
 }
 
 .crumb-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-wrap: wrap;
   margin-left: auto;
 }
 
@@ -269,6 +284,9 @@ onUnmounted(() => {
 .action-icon-button--danger:hover:not(:disabled) { background: rgb(195 79 73 / 10%); }
 .action-icon-button:disabled { opacity: .45; cursor: not-allowed; }
 .action-icon { display: block; width: 28px; height: 28px; background: currentColor; -webkit-mask: var(--action-icon) center / contain no-repeat; mask: var(--action-icon) center / contain no-repeat; }
+/* 相邻图标的 44px 点击区域比 28px 图形每侧多 8px；补齐胶囊侧的视觉间距。 */
+.crumb-actions .continue-reading { flex: none; margin-inline-start: 8px; }
+.continue-reading-icon { display: block; flex: none; width: 12px; height: 12px; background: currentColor; -webkit-mask: url('/icons/play.fill.svg') center / contain no-repeat; mask: url('/icons/play.fill.svg') center / contain no-repeat; }
 .action-icon--translate { --action-icon: url('/icons/translate.svg'); width: 32px; }
 .action-icon--refresh { --action-icon: url('/icons/arrow.clockwise.circle.fill.svg'); }
 .action-icon--trash { --action-icon: url('/icons/trash.circle.fill.svg'); }
@@ -315,9 +333,7 @@ onUnmounted(() => {
 @media (max-width: 580px) {
   .novel { padding-bottom: 36px; }
   .crumbs { flex-wrap: wrap; gap: 8px 10px; padding: 12px 0 8px; }
-  .crumb-current { overflow-wrap: anywhere; }
   .crumb-actions { width: 100%; margin-left: 0; gap: 2px; }
-  .crumb-actions button { min-height: 44px; }
   .state-actions { flex-wrap: wrap; justify-content: center; }
 }
 

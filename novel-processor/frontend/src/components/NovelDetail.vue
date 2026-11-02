@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import NormalButton from '@/components/NormalButton.vue'
+import CompactButton from '@/components/CompactButton.vue'
 import { computed, ref, watch } from 'vue'
 import type { Episode, NovelRecord } from '@/lib'
 import type { DownloadJob } from '@/api'
@@ -14,12 +16,14 @@ const props = defineProps<{
   translations?: EpisodeTranslationStatus[]
   reading?: ReadingProgress | null
   readingSaving?: boolean
+  stoppingDownload?: boolean
   busy: string | null
   job: DownloadJob | null
 }>()
 
 const emit = defineEmits<{
   'update-reading': [input: UpdateReading]
+  'stop-download': []
   open: [index: number]
   download: [payload: { range?: string; all?: boolean; overwrite?: boolean }]
 }>()
@@ -189,9 +193,10 @@ watch(
           <span class="chip">首发 {{ formatDate(catalog.meta.firstPublishedAt) }}</span>
         </div>
       </div>
-      <a class="source-link" :href="catalog.source.url" target="_blank" rel="noreferrer">
-        原站 <span aria-hidden="true">↗</span>
-      </a>
+      <CompactButton variant="secondary" :href="catalog.source.url" target="_blank" rel="noopener noreferrer">
+        原站
+        <template #icon><span class="source-link-icon" /></template>
+      </CompactButton>
     </div>
 
     <div v-if="summary" class="summary-block">
@@ -231,6 +236,7 @@ watch(
           <template v-if="jobFailed > 0"> · 失败 {{ jobFailed }}</template>
         </span>
         <span class="job-percent">{{ jobPercent }}%</span>
+        <NormalButton small variant="ghost" class="stop-download" type="button" :disabled="stoppingDownload || job?.stopping" @click="emit('stop-download')">{{ stoppingDownload || job?.stopping ? '正在取消…' : '取消抓取' }}</NormalButton>
       </div>
     </div>
 
@@ -243,9 +249,7 @@ watch(
           aria-label="下载区间"
           @keydown.enter="submitRange"
         />
-        <button class="pill pill--ghost pill--small" type="button" :disabled="!rangeInput.trim() || !!busy" @click="submitRange">
-          抓区间
-        </button>
+        <CompactButton variant="secondary" :disabled="!rangeInput.trim() || !!busy" @click="submitRange">抓区间</CompactButton>
       </div>
 
       <div class="toolbar-actions">
@@ -259,13 +263,11 @@ watch(
             <option :value="8">8</option>
           </select>
         </label>
-        <button class="pill pill--ghost pill--small" type="button" :disabled="!!busy || missing === 0" @click="emit('download', {})">
-          <span>补缺失</span>
-        </button>
-        <button class="pill" type="button" :disabled="!!busy" @click="emit('download', { all: true, overwrite: true })">
+        <CompactButton variant="secondary" :disabled="!!busy || missing === 0" @click="emit('download', {})">补缺失</CompactButton>
+        <NormalButton type="button" :disabled="!!busy" @click="emit('download', { all: true, overwrite: true })">
           <span>{{ running ? `下载中 ${jobDone}/${jobTotal}` : busy ? '下载中…' : '全部重抓' }}</span>
           <span class="download-all-icon" aria-hidden="true" />
-        </button>
+        </NormalButton>
       </div>
     </div>
 
@@ -276,9 +278,14 @@ watch(
     <div class="list-head">
       <span class="eyebrow eyebrow--faint">Contents</span>
       <div class="list-tools">
-        <button type="button" class="text-btn" @click="expandAll">展开全部</button>
-        <span class="sep">·</span>
-        <button type="button" class="text-btn" @click="collapseAll">折叠全部</button>
+        <CompactButton variant="secondary" @click="expandAll">
+          展开全部
+          <template #icon><span class="contents-toggle-icon contents-toggle-icon--expand" /></template>
+        </CompactButton>
+        <CompactButton variant="secondary" @click="collapseAll">
+          折叠全部
+          <template #icon><span class="contents-toggle-icon contents-toggle-icon--collapse" /></template>
+        </CompactButton>
       </div>
     </div>
 
@@ -383,14 +390,10 @@ watch(
   color: #c3d0d6;
 }
 
-.source-link {
-  flex: none;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--blue-dark);
-  padding-bottom: 2px;
-  transition: border-color 0.2s ease;
+.source-link-icon {
+  background: currentColor;
+  -webkit-mask: url('/icons/square.and.arrow.up.svg') center / contain no-repeat;
+  mask: url('/icons/square.and.arrow.up.svg') center / contain no-repeat;
 }
 
 .summary-block {
@@ -490,8 +493,10 @@ watch(
   transition: width 0.5s ease;
 }
 
+.stop-download { margin-left: auto; }
 .job-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 9px;
   margin-top: 12px;
@@ -597,19 +602,13 @@ watch(
   font-size: 11px;
 }
 
-.text-btn {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--muted);
-  font-size: 11px;
-  cursor: pointer;
-  transition: color 0.2s ease;
+.contents-toggle-icon {
+  background: currentColor;
+  -webkit-mask: var(--contents-toggle-icon) center / contain no-repeat;
+  mask: var(--contents-toggle-icon) center / contain no-repeat;
 }
-
-.text-btn:hover {
-  color: var(--blue-dark);
-}
+.contents-toggle-icon--expand { --contents-toggle-icon: url('/icons/chevron.down.svg'); }
+.contents-toggle-icon--collapse { --contents-toggle-icon: url('/icons/chevron.up.svg'); }
 
 .episode-list {
   max-height: 46vh;
@@ -805,7 +804,6 @@ watch(
   .episode { min-height: 44px; gap: 6px; padding: 9px 4px; grid-template-columns: 30px minmax(0, 1fr); }
   .group-title { min-width: 0; overflow-wrap: anywhere; }
   .group-count { flex: none; }
-  .list-tools .text-btn { min-height: 40px; }
   .summary-toggle { min-height: 40px; }
 }
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CompactButton from '@/components/CompactButton.vue'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { LibraryEntry } from '@/api'
@@ -36,6 +37,10 @@ const complete = computed(
   () => props.entry.episodeCount > 0 && props.entry.downloaded >= props.entry.episodeCount,
 )
 
+const statusTone = computed(() => {
+  return ['ongoing', 'completed', 'hiatus', 'short'].includes(props.entry.status) ? props.entry.status : 'unknown'
+})
+
 const statusText = computed(() => {
   const map: Record<string, string> = {
     ongoing: '连载中',
@@ -56,8 +61,11 @@ function formatNumber(n: number | null): string {
 <template>
   <article class="card" tabindex="0" role="link" @click="emit('open', entry)" @keydown.enter.self="emit('open', entry)">
     <header class="card-top">
-      <span class="chip" :class="{ 'chip--done': complete }">{{ complete ? '已下完' : statusText }}</span>
-      <button class="pill pill--ghost pill--small card-reading-entry" type="button" :disabled="!entry.episodeCount" :title="`进入第 ${readingTarget} 话`" @click.stop="openReader" @keydown.stop>{{ resumeIndex !== null ? '继续阅读' : '开始阅读' }}<span aria-hidden="true">→</span></button>
+      <span class="chip status-chip" :class="`status-chip--${statusTone}`">{{ statusText }}</span>
+      <CompactButton class="card-reading-entry" :disabled="!entry.episodeCount" :title="`进入第 ${readingTarget} 话`" @click.stop="openReader" @keydown.stop>
+        {{ resumeIndex !== null ? '继续阅读' : '开始阅读' }}
+        <template #icon><span class="card-reading-icon" /></template>
+      </CompactButton>
     </header>
 
     <h3 class="card-title serif" :lang="lang">{{ entry.title }}</h3>
@@ -120,7 +128,33 @@ function formatNumber(n: number | null): string {
   flex-wrap: wrap;
 }
 
-.card-reading-entry { margin-left: auto; min-height: 36px; padding: 8px 12px; gap: 8px; color: var(--blue-dark); white-space: nowrap; }
+.card-reading-entry { margin-left: auto; }
+
+.card-reading-icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask: url('/icons/play.fill.svg') center / contain no-repeat;
+  mask: url('/icons/play.fill.svg') center / contain no-repeat;
+}
+
+.status-chip {
+  background: var(--status-chip-bg);
+  color: #fff;
+}
+.status-chip--ongoing { --status-chip-bg: #2879ce; }
+.status-chip--completed { --status-chip-bg: #8950ce; }
+.status-chip--hiatus { --status-chip-bg: #b66c0c; }
+.status-chip--short { --status-chip-bg: #d14c63; }
+.status-chip--unknown { --status-chip-bg: #697d91; }
+
+:global(html[data-theme='dark']) .status-chip { color: #112633; }
+:global(html[data-theme='dark']) .status-chip--ongoing { --status-chip-bg: #78b9ff; }
+:global(html[data-theme='dark']) .status-chip--completed { --status-chip-bg: #c39aff; }
+:global(html[data-theme='dark']) .status-chip--hiatus { --status-chip-bg: #ffc463; }
+:global(html[data-theme='dark']) .status-chip--short { --status-chip-bg: #ff93ac; }
+:global(html[data-theme='dark']) .status-chip--unknown { --status-chip-bg: #adbed0; }
 
 .card-title {
   margin-top: 14px;

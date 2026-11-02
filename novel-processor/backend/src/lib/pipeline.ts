@@ -345,14 +345,16 @@ export class NovelFetcher {
           return
         }
 
+        if (options.signal?.aborted) return
         options.onEpisodeState?.(index, true)
         try {
           const content = await this.fetchOne(adapter, ref, index, { ...options, onProgress: undefined })
+          if (options.signal?.aborted) return
           await options.onEpisode?.(content)
           fetched += 1
         } catch (err) {
           // 取消不是失败，不计入 failed
-          if (err instanceof NovelError && err.code === 'ABORTED') return
+          if (options.signal?.aborted || err instanceof NovelError && err.code === 'ABORTED') return
           failed.push({ index, error: describeError(err) })
         } finally { options.onEpisodeState?.(index, false) }
         report()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import NormalButton from '@/components/NormalButton.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, type AiModelConfig } from '@/api'
 import type { NovelRecord } from '@/lib'
@@ -100,7 +101,7 @@ onUnmounted(() => generation?.abort())
   <section class="translation-workspace" aria-labelledby="translation-title">
       <header class="workspace-head">
         <h2 id="translation-title">初始化翻译材料</h2>
-        <button v-if="saved && !loading" class="pill pill--ghost pill--small" type="button" :disabled="saving || maintaining" :aria-expanded="editing" @click="editing = !editing">{{ editing ? '收起配置' : '重新初始化' }}</button>
+        <NormalButton small variant="ghost" v-if="saved && !loading" type="button" :disabled="saving || maintaining" :aria-expanded="editing" @click="editing = !editing">{{ editing ? '收起配置' : '重新初始化' }}</NormalButton>
       </header>
       <p v-if="loading" class="message" role="status">读取翻译材料…</p>
       <form v-else-if="!saved || editing" @submit.prevent="generate">
@@ -113,10 +114,10 @@ onUnmounted(() => generation?.abort())
         </fieldset>
         <p v-if="!models.length" class="message">尚无启用的模型。<RouterLink to="/settings">前往模型管理</RouterLink></p>
         <p v-if="saved" class="hint">重新生成仅在成功后替换当前概要，失败会保留原有内容。</p>
-        <div class="actions"><button class="pill" type="submit" :disabled="saving || maintaining || !selectedModel || !sample.length">{{ saving ? '正在阅读材料并生成…' : saved ? '重新生成概要' : '开始初始化' }}</button></div>
+        <div class="actions"><NormalButton type="submit" :disabled="saving || maintaining || !selectedModel || !sample.length">{{ saving ? '正在阅读材料并生成…' : saved ? '重新生成概要' : '开始初始化' }}</NormalButton></div>
       </form>
       <TranslationTaskPanel v-if="task" :task="task" @cancel="generation?.abort()" />
-      <div v-if="error" class="error" role="alert">{{ error }}<button class="pill pill--ghost pill--small" type="button" :disabled="saving || maintaining" @click="load">重新读取</button></div>
+      <div v-if="error" class="error" role="alert">{{ error }}<NormalButton small variant="ghost" type="button" :disabled="saving || maintaining" @click="load">重新读取</NormalButton></div>
       <BriefMaintenance v-if="saved" :saved="saved" :models="models" :disabled="saving" @busy="maintaining = $event" @updated="saved = $event" />
       <TranslationBriefView v-if="saved" class="result" :saved="saved" @export="exportJson" />
   </section>

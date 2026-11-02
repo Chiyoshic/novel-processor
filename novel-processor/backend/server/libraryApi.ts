@@ -150,6 +150,8 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
    */
   interface DownloadJob {
     activeIndices: number[]
+    stopping: boolean
+    cancelled: boolean
     total: number
     done: number
     failed: number
@@ -158,6 +160,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
     finishedAt: number | null
   }
   const jobs = new Map<string, DownloadJob>()
+  const downloadControllers = new Map<string, AbortController>()
   const initializationJobs = new Set<string>()
   const episodeTranslations = new EpisodeTranslationService(db, store, initializationJobs)
 
@@ -445,7 +448,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
 
       // POST /api/sync —— 从磁盘重建索引
       if (segments.length === 1 && segments[0] === 'sync' && method === 'POST') {
-        if (initializationJobs.size) { sendJson(res, 409, { error: '翻译任务执行中，完成后再同步数据' }); return }
+        if (initializationJobs.size || [...jobs.values()].some((job) => job.running)) { sendJson(res, 409, { error: '翻译或抓取任务执行中，完成或停止后再同步数据' }); return }
         const result = await syncFromDisk()
         sendJson(res, 200, { ...result, stats: db.stats() })
         return
@@ -505,7 +508,7 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
         // DELETE /api/library/:site/:id?permanent=1 → 二级删除：连文件一起永久删除
         if (segments.length === 3 && method === 'DELETE') {
           const permanent = url.searchParams.get('permanent') === '1'
-          if (initializationJobs.has(JSON.stringify([site, novelId]))) { sendJson(res, 409, { error: '本书正在翻译，请先停止任务后再删除' }); return }
+          if (initializationJobs.has(JSON.stringify([site, novelId])) || jobs.get(`${site}/${novelId}`)?.running) { sendJson(res, 409, { error: '本书正在翻译或抓取，请先停止任务后再删除' }); return }
 
           if (!permanent) {
             if (!db.trashNovel(site, novelId)) {
@@ -586,8 +589,15 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
           return
         }
 
+        if (segments[3] === 'fetch' && segments[4] === 'stop' && segments.length === 5 && method === 'POST') {
+          const job = jobs.get(`${site}/${novelId}`)
+          if (job?.running) { job.stopping = true; downloadControllers.get(`${site}/${novelId}`)?.abort() }
+          sendJson(res, 200, { job: job ?? null })
+          return
+        }
+
         // POST /api/library/:site/:id/fetch  { range?, all?, overwrite?, concurrency? }
-        if (segments[3] === 'fetch' && method === 'POST') {
+        if (segments[3] === 'fetch' && segments.length === 4 && method === 'POST') {
           if (initializationJobs.has(JSON.stringify([site, novelId]))) { sendJson(res, 409, { error: '本书正在翻译，请先停止任务后再更新正文' }); return }
           const body = await readBody(req)
           const record = await readCatalog(site, novelId)
@@ -626,8 +636,10 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             return
           }
 
+          const controller = new AbortController()
+          downloadControllers.set(jobKey, controller)
           jobs.set(jobKey, {
-            activeIndices: [],
+            activeIndices: [], stopping: false, cancelled: false,
             total: indices?.length ?? record.episodes.length,
             done: 0,
             failed: 0,
@@ -636,8 +648,10 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             finishedAt: null,
           })
 
+          try {
           const result = await library.downloadEpisodes(record.source.url, {
-            indices,
+            indices: indices ?? record.episodes.map((episode) => episode.index),
+            signal: controller.signal,
             overwrite,
             concurrency,
             onEpisodeState: (index, active) => {
@@ -653,13 +667,6 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
               if (rowId !== null) db.markContent(site, novelId, [content.index])
               db.invalidateEpisodeTranslation(site, novelId, content.index, hashEpisodeSource(content))
             },
-          }).catch((error) => {
-            const job = jobs.get(jobKey)
-            if (job) { job.running = false; job.finishedAt = Date.now() }
-            throw error
-          }).finally(() => {
-            const job = jobs.get(jobKey)
-            if (job) job.activeIndices = []
           })
 
           // 用磁盘真实状态回写索引，修正增量标记的偏差（例如中断、手动删文件）
@@ -680,7 +687,13 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             failed: result.failed,
             durationMs: result.durationMs,
             manifest: result.manifest,
+            cancelled: controller.signal.aborted,
           })
+          } finally {
+            const job = jobs.get(jobKey)
+            if (job) { job.running = false; job.stopping = false; job.cancelled = controller.signal.aborted; job.activeIndices = []; job.finishedAt = Date.now() }
+            downloadControllers.delete(jobKey)
+          }
           return
         }
       }

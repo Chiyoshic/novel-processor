@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import NormalButton from '@/components/NormalButton.vue'
 import { computed, ref } from 'vue'
 import type { SiteInfo } from '@/lib'
 import AppSelect from '@/components/AppSelect.vue'
@@ -58,10 +59,10 @@ function submit(): void {
             aria-label="作品地址或作品 ID"
             :disabled="busy"
           />
-          <button class="pill" type="submit" :disabled="busy || !input.trim()">
+          <NormalButton type="submit" :disabled="busy || !input.trim()">
             <span>{{ busy ? '解析中…' : '添加作品' }}</span>
             <span class="import-plus-icon" aria-hidden="true" />
-          </button>
+          </NormalButton>
         </div>
       </form>
     </div>

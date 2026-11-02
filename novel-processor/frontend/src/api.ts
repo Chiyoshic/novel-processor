@@ -103,6 +103,8 @@ export interface LibraryFacets {
 
 /** 下载任务进度（内存态，随任务结束而停止变化）。 */
 export interface DownloadJob {
+  stopping?: boolean
+  cancelled?: boolean
   activeIndices?: number[]
   total: number
   done: number
@@ -120,6 +122,7 @@ export interface DownloadProgress {
 }
 
 export interface DownloadSummary {
+  cancelled?: boolean
   total: number
   fetched: number
   skipped: number
@@ -219,6 +222,8 @@ export const api = {
 
   importNovel: (input: string, site?: string) =>
     request<NovelRecord>('/import', { method: 'POST', body: JSON.stringify({ input, site }) }),
+
+  stopDownload: (site: string, novelId: string) => request<{ job: DownloadJob | null }>(`/library/${site}/${novelId}/fetch/stop`, { method: 'POST' }),
 
   download: (
     site: string,
