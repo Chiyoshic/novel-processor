@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import NormalButton from '@/components/NormalButton.vue'
 import CompactButton from '@/components/CompactButton.vue'
+import NovelStatusTag from './NovelStatusTag.vue'
 import { computed, ref, watch } from 'vue'
 import type { Episode, NovelRecord } from '@/lib'
 import type { DownloadJob } from '@/api'
@@ -111,17 +112,6 @@ const jobPercent = computed(() =>
   jobTotal.value === 0 ? 0 : Math.round((jobDone.value / jobTotal.value) * 100),
 )
 
-const statusLabel = computed(() => {
-  const map: Record<string, string> = {
-    ongoing: '连载中',
-    completed: '完结',
-    hiatus: '休载',
-    short: '短篇',
-    unknown: '未知',
-  }
-  return props.catalog.meta.statusLabel ?? map[props.catalog.meta.status] ?? '未知'
-})
-
 const stats = computed(() => [
   { label: 'Episodes', value: formatNumber(props.catalog.meta.episodeCount ?? total.value) },
   { label: 'Chapters', value: formatNumber(props.catalog.meta.chapterCount ?? groups.value.length) },
@@ -180,23 +170,19 @@ watch(
 <template>
   <section class="detail">
     <div class="detail-head">
-      <div class="head-main">
-        <p class="eyebrow">
-          {{ catalog.source.siteName }} / {{ catalog.source.novelId }}
-        </p>
-        <h2 class="detail-title serif" :lang="lang">{{ catalog.meta.title }}</h2>
-        <div class="head-meta">
-          <span class="author">{{ catalog.meta.author.name || '未知作者' }}</span>
-          <span class="sep" aria-hidden="true">·</span>
-          <span class="chip chip--accent">{{ statusLabel }}</span>
-          <span v-if="catalog.meta.completedAt" class="chip">完结 {{ catalog.meta.completedAt }}</span>
-          <span class="chip">首发 {{ formatDate(catalog.meta.firstPublishedAt) }}</span>
-        </div>
+      <div class="detail-source">
+        <p class="eyebrow">{{ catalog.source.siteName }} / {{ catalog.source.novelId }}</p>
+        <CompactButton variant="secondary" :href="catalog.source.url" target="_blank" rel="noopener noreferrer">
+          原站
+          <template #icon><span class="source-link-icon" /></template>
+        </CompactButton>
       </div>
-      <CompactButton variant="secondary" :href="catalog.source.url" target="_blank" rel="noopener noreferrer">
-        原站
-        <template #icon><span class="source-link-icon" /></template>
-      </CompactButton>
+      <h2 class="detail-title serif" :lang="lang">{{ catalog.meta.title }}</h2>
+      <div class="head-meta">
+        <span class="author">{{ catalog.meta.author.name || '未知作者' }}</span>
+        <span class="sep" aria-hidden="true">·</span>
+        <NovelStatusTag :status="catalog.meta.status" :label="catalog.meta.statusLabel" />
+      </div>
     </div>
 
     <div v-if="summary" class="summary-block">
@@ -207,6 +193,17 @@ watch(
       <button v-if="summaryIsLong" class="summary-toggle" type="button" @click="summaryOpen = !summaryOpen">
         {{ summaryOpen ? '收起' : '展开全文' }}
       </button>
+    </div>
+
+    <div class="stat-row stat-row--dates">
+      <div class="stat">
+        <span class="eyebrow eyebrow--faint">Published</span>
+        <strong>{{ formatDate(catalog.meta.firstPublishedAt) }}</strong>
+      </div>
+      <div class="stat">
+        <span class="eyebrow eyebrow--faint">Completed</span>
+        <strong>{{ formatDate(catalog.meta.completedAt) }}</strong>
+      </div>
     </div>
 
     <div class="stat-row">
@@ -348,18 +345,14 @@ watch(
   box-shadow: var(--shadow-soft);
 }
 
-.detail-head {
+.detail-head { min-width: 0; }
+.detail-source {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 12px;
 }
-
-/* 标题尽量占满可用宽度：放得下就单行，放不下才自然折行 */
-.head-main {
-  flex: 1;
-  min-width: 0;
-}
+.detail-source .eyebrow { min-width: 0; overflow-wrap: anywhere; }
 
 .detail-title {
   margin-top: 12px;
@@ -368,7 +361,7 @@ watch(
   line-height: 1.2;
   /* 中文/日文标题用负字距会挤字，这里保持 0 */
   letter-spacing: 0;
-  text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 
 .head-meta {
@@ -436,6 +429,15 @@ watch(
   grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-top: 24px;
   padding: 18px 0;
+}
+
+.stat-row--dates {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-bottom: 0;
+}
+.stat-row--dates + .stat-row {
+  margin-top: 18px;
+  padding-top: 0;
 }
 
 .stat {
@@ -791,7 +793,6 @@ watch(
 }
 @media (max-width: 580px) {
   .detail { padding: 20px 16px; }
-  .detail-head { gap: 10px; }
   .detail-title { font-size: 23px; overflow-wrap: anywhere; }
   .head-meta { gap: 6px; }
   .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
