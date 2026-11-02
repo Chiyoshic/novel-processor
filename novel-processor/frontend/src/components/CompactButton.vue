@@ -54,11 +54,11 @@ withDefaults(defineProps<{
   background: #f5d7d3;
   color: #9b302b;
 }
-:global(html[data-theme='dark']) .compact-button--secondary.compact-button--danger {
+:global(html[data-theme='dark'] .compact-button--secondary.compact-button--danger) {
   background: #482b2b;
   color: #f1a29a;
 }
-:global(html[data-theme='dark']) .compact-button--secondary.compact-button--danger:hover:not(:disabled) {
+:global(html[data-theme='dark'] .compact-button--secondary.compact-button--danger:hover:not(:disabled)) {
   background: #5b3434;
   color: #ffc0b9;
 }

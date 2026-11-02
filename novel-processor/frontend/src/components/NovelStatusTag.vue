@@ -33,11 +33,11 @@ const text = computed(() => props.label || labels[tone.value])
 .novel-status--short { --status-chip-bg: #d14c63; }
 .novel-status--unknown { --status-chip-bg: #697d91; }
 
-:global(html[data-theme='dark']) .novel-status { color: #112633; }
-:global(html[data-theme='dark']) .novel-status--ongoing { --status-chip-bg: #78b9ff; }
-:global(html[data-theme='dark']) .novel-status--completed { --status-chip-bg: #c39aff; }
-:global(html[data-theme='dark']) .novel-status--hiatus { --status-chip-bg: #ffc463; }
-:global(html[data-theme='dark']) .novel-status--short { --status-chip-bg: #ff93ac; }
-:global(html[data-theme='dark']) .novel-status--unknown { --status-chip-bg: #adbed0; }
+:global(html[data-theme='dark'] .novel-status) { color: #112633; }
+:global(html[data-theme='dark'] .novel-status--ongoing) { --status-chip-bg: #78b9ff; }
+:global(html[data-theme='dark'] .novel-status--completed) { --status-chip-bg: #c39aff; }
+:global(html[data-theme='dark'] .novel-status--hiatus) { --status-chip-bg: #ffc463; }
+:global(html[data-theme='dark'] .novel-status--short) { --status-chip-bg: #ff93ac; }
+:global(html[data-theme='dark'] .novel-status--unknown) { --status-chip-bg: #adbed0; }
 
 </style>

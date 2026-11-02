@@ -50,7 +50,7 @@ function toggle(value: T, event: MouseEvent): void {
 .pill-multi-select__option[aria-pressed='true'] { background: #3f719c; color: #fff; }
 .pill-multi-select__option:hover:not(:disabled) { background: var(--blue-line); color: var(--blue-dark); }
 .pill-multi-select__option[aria-pressed='true']:hover:not(:disabled) { background: #315d83; color: #fff; }
-:global(html[data-theme='dark']) .pill-multi-select__option[aria-pressed='true'] { background: #7eb5de; color: #10212a; }
-:global(html[data-theme='dark']) .pill-multi-select__option[aria-pressed='true']:hover:not(:disabled) { background: #a4cce7; color: #10212a; }
+:global(html[data-theme='dark'] .pill-multi-select__option[aria-pressed='true']) { background: #7eb5de; color: #10212a; }
+:global(html[data-theme='dark'] .pill-multi-select__option[aria-pressed='true']:hover:not(:disabled)) { background: #a4cce7; color: #10212a; }
 .pill-multi-select__option:disabled { opacity: .5; cursor: not-allowed; }
 </style>

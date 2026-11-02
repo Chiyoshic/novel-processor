@@ -241,6 +241,7 @@ git diff --check
 - 翻译页主标题“AI 翻译”显式使用 `color: var(--ink)`，确保夜间为高对比度浅色文字，不依赖外层颜色继承。
 
 - Vue scoped CSS 的 `:global()` 应包住完整的跨主题选择器（如 `:global(html[data-theme="dark"] .app-select--soft-shadow)`），不得写成 global(html) 后接局部类导致编译丢失后缀、变量落在html上被组件局部默认值覆盖；主题改动需验证编译后的CSS。下拉菜单弹层夜间也使用柔和白色阴影。
+- 组件暗色样式不得编译成裸 `html[data-theme='dark']` 规则，否则组件文字色/背景会污染全站继承色（包括品牌与页面标题）；`test:appearance` 包含全组件 scoped CSS 编译回归检查。全局正文保持 `--ink`，品牌 processor 保持 `--blue-dark`，阅读器自定义颜色不受组件状态色影响。
 
 - 创建任务不展示“重新生成仅在成功后替换当前概要，失败会保留原有内容”及“共N话，按目录顺序选取；本次将读取前N话正文。请先在详情页下载这一范围”提示；只删除文案，不改变取样、保存或失败保留逻辑。
 
