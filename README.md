@@ -20,7 +20,6 @@
 - [项目介绍](#overview)
 - [主要功能](#features)
 - [技术栈与运行架构](#architecture)
-- [项目结构](#structure)
 - [环境要求](#requirements)
 - [快速开始：Docker 后端 + 本地前端](#quickstart)
 - [配置说明](#configuration)
@@ -64,7 +63,14 @@
 ### 小说采集
 
 - 支持作品 URL 或作品 ID（ncode）输入。
-- 当前内置 `syosetu` 适配器，支持小説家になろう普通站点及预留的 R18 变体解析。
+- **当前支持：** 小説家になろう（Syosetu）。
+- **计划支持：**
+  - カクヨム（Kakuyomu）
+  - アルファポリス（Alphapolis）
+  - ノベルアップ＋（Novelup Plus）
+  - エブリスタ（E★エブリスタ）
+  - ハーメルン（Hameln）
+  - ノベマ！（Novema!）
 - 抓取目录、章节、话标题、发布时间、作品简介、作者、状态、标签和字数等元数据。
 - 目录分页、站点 API 富化、正文解析和本地文件落盘分层处理。
 - 支持按话号、话号范围或全书批量下载。
@@ -152,46 +158,6 @@ Node.js API（单实例）
 ```
 
 前端不直接抓取小说站点，不通过 Vite 中间件提供后端 API。线上运行需要独立 API 服务；只发布前端 `dist/` 不能替代后端。
-
-<a id="structure"></a>
-## 项目结构
-
-```text
-novel-processor/
-├── README.md                       # 项目总说明
-├── LICENSE                         # MIT License
-├── AGENTS.md                       # 项目协作与界面设计约定
-└── novel-processor/
-    ├── frontend/                   # Vue 前端
-    │   ├── src/
-    │   │   ├── components/         # 全局组件、书架、目录、翻译和阅读器组件
-    │   │   ├── views/              # 页面级路由视图
-    │   │   ├── lib/                # API、阅读器偏好、主题和通用逻辑
-    │   │   ├── api.ts              # 类型化 API 客户端
-    │   │   └── style.css           # 全局设计令牌和主题样式
-    │   ├── public/                 # 图标、PWA 素材和 Apple 图标
-    │   ├── scripts/                # 构建图标及前端测试脚本
-    │   ├── .env.example
-    │   └── vite.config.ts
-    ├── backend/                    # Node.js API 服务和采集内核
-    │   ├── src/
-    │   │   ├── lib/                # 采集门面、流水线和站点适配器
-    │   │   ├── storage/            # 文件系统正文存储
-    │   │   ├── ai.ts               # OpenAI 兼容模型调用、流式、重试和超时
-    │   │   ├── translation.ts      # 初始化材料提示词和流程
-    │   │   └── episode-translation.ts
-    │   ├── server/                 # HTTP API、SQLite、鉴权和任务服务
-    │   ├── scripts/                # CLI、测试和离线验证
-    │   ├── .env.example
-    │   ├── Dockerfile
-    │   └── docker-compose.yml
-    ├── shared/                     # 前后端共享类型和领域逻辑
-    ├── deploy/nginx/               # Nginx SPA 回退配置
-    ├── data/                       # 本地运行时数据，不提交到 Git
-    └── docs/                       # 专题设计、接口和部署文档
-```
-
-更完整的采集分层和数据模型说明见 [`docs/architecture.md`](./novel-processor/docs/architecture.md)。
 
 <a id="requirements"></a>
 ## 环境要求
