@@ -1,11 +1,15 @@
 # novel-processor
 
-<p>
-  <img style="display: block; margin: 0 auto;" src="./novel-processor/frontend/public/app-icon.svg" width="88" height="88" alt="novel-processor 书本图标" />
-  <div style="text-align: center; font-size: 1.5em; margin-top: 0.5em;">个人小说采集、整理、阅读与 AI 翻译工作台。</div>
+<p align="center">
+  <img src="./novel-processor/frontend/public/app-icon.svg" width="88" height="88" alt="novel-processor 书本图标" />
 </p>
 
-<p style="text-align: center;">
+<p align="center">
+  <strong>把喜欢的日轻小说，收进自己的书架。</strong><br />
+  Bring the Japanese light novels you love to your own bookshelf.
+</p>
+
+<p align="center">
   <a href="https://github.com/Chiyoshic/novel-processor/releases"><img src="https://img.shields.io/badge/version-v1.0.0-6a9ecd" alt="Version" /></a>
   <a href="https://github.com/Chiyoshic/novel-processor/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-8950ce" alt="Release v1.0.0" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-79c2ac" alt="License" /></a>
@@ -16,19 +20,49 @@
   <a href="./novel-processor/docs/features/07-pwa.md"><img src="https://img.shields.io/badge/PWA-supported-8950ce" alt="PWA" /></a>
 </p>
 
+<p align="center">
+  <strong>简体中文</strong> · <a href="./README.en.md">English</a><br />
+  更多语言版本即将上线 · More language versions are coming soon.
+</p>
+
 > 当前文档对应 **v1.0.0**。当前支持小説家になろう，其他平台按计划逐步接入。正式版本与变更说明以 [Releases](https://github.com/Chiyoshic/novel-processor/releases) 为准。
+>
+> This README covers **v1.0.0**. Syosetu is currently supported, with more platforms planned. See [Releases](https://github.com/Chiyoshic/novel-processor/releases) for published versions and release notes.
+
+<a id="overview"></a>
+## 项目介绍 / Overview
+
+`novel-processor` 是面向日轻爱好者的个人书库，集小说采集、书架管理、沉浸阅读与 AI 翻译于一体，通过初始化材料、上下文参考与动态维护，让长篇翻译更连贯。
+
+A personal Japanese light novel library with novel fetching, bookshelf management, immersive reading, and context-aware AI translation powered by evolving character, terminology, and style guides.
+
+项目提供浏览器界面和独立 Node.js API，正文、译文和个人状态保存在你的服务器或本机。它面向个人使用，不提供公共内容分发或开放注册；使用 AI 时，对应材料会发送到你配置的模型服务。
+
+The browser interface connects to a standalone Node.js API, with source text, translations, and personal data stored on your own server or computer. It is built for personal use, without public content distribution or open registration. AI features send the relevant material to your configured model provider.
+
+文中“章”表示目录分组，“话”表示有独立正文的 episode；下载、翻译、阅读记录和初始化采样均以“话”为主要单位。
+
+Here, a **chapter** is a table-of-contents group, while an **episode** is an individual installment with its own text. Downloads, translation, reading records, and initialization samples primarily operate on episodes.
 
 <a id="translation-highlights"></a>
-## 不只是逐话直接翻译
+## 不只是逐话直接翻译 / More than isolated episode translation
 
 相比把每一话单独交给模型，`novel-processor` 为长篇小说维护一份**可持续更新的翻译材料**，让后续翻译有据可循：
 
+Rather than translating each episode in isolation, `novel-processor` maintains an **evolving translation guide** for the novel, giving later episodes a consistent foundation:
+
 - **先理解，再翻译**：从简介、前言和前若干话中初始化中文书名、剧情梗概、角色译名、术语与语言风格，建立统一基线。
+  <br />**Understand first, translate second:** Use the synopsis, prefaces, and opening episodes to establish a Chinese title, plot summary, character names, terminology, and style baseline.
 - **带着上下文继续**：每话结合最新材料与最近若干话的译文，帮助承接剧情、统一称呼和文风，而不是每次从零开始。
+  <br />**Carry the context forward:** Combine the latest guide with recent translations to help maintain narrative continuity, names, and tone instead of starting from scratch.
 - **材料随剧情生长**：模型在翻译时提出角色、别名、术语和规则的增补或修改，由程序校验后写回，供后续话使用。
+  <br />**Let the guide grow with the story:** The model proposes updates to characters, aliases, terms, and rules. Validated changes are saved for subsequent episodes.
 - **去重与压缩维护**：用 AI 合并重复信息、按模块压缩冗长说明；先预览再应用，保留历史恢复能力，避免材料无序膨胀。
+  <br />**Keep the guide focused:** Merge duplicates and summarize selected sections with AI. Preview changes before applying them, with revision history available for restoration.
 
 目标是减少长篇翻译中的译名漂移、风格断层和重复说明；具体效果仍取决于模型与材料质量，需要人工复核。
+
+The goal is to reduce naming drift, inconsistent style, and repetitive notes across a long novel. Results still depend on the model and source material, and human review remains important.
 
 ## 目录
 
@@ -45,15 +79,6 @@
 - [文档索引](#documentation)
 - [合规与使用边界](#boundaries)
 - [开源协议](#license)
-
-<a id="overview"></a>
-## 项目介绍
-
-`novel-processor` 是面向个人阅读整理的小说工作台。它把小说目录、正文、阅读状态、翻译材料和译文组织到同一个本地书库中，提供浏览器界面、独立 Node.js API 和可选的 AI 翻译服务。
-
-项目定位是个人书库和个人阅读整理工具，不提供公共内容分发服务，也不开放注册系统。正文和译文会保存在你的服务器或本机数据目录中，使用 AI 功能时会将对应材料发送到你配置的模型服务。
-
-文中“章”表示目录分组，“话”表示有独立正文的 episode；下载、翻译、阅读记录和初始化采样均以“话”为主要单位。
 
 <a id="features"></a>
 ## 功能总览
@@ -173,11 +198,13 @@ git checkout v1.0.0
 
 ### 2. 启动后端 Docker
 
+从 Git 仓库根目录执行；已有 `.env` 时直接编辑，不要覆盖：
+
 ```sh
-cp backend/.env.example backend/.env
+cp novel-processor/backend/.env.example novel-processor/backend/.env
 ```
 
-编辑 `backend/.env`：
+编辑 `novel-processor/backend/.env`：
 
 ```dotenv
 AUTH_INITIAL_USERNAME=chiyoshi
@@ -188,6 +215,7 @@ CORS_ORIGINS=http://localhost:5175
 启动：
 
 ```sh
+cd novel-processor/backend
 docker compose up -d --build
 docker compose ps
 curl http://127.0.0.1:64226/healthz

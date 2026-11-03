@@ -2,6 +2,8 @@
 
 文档按使用功能、部署运维和源码开发组织。版本基线为 `v1.0.0`。
 
+项目首页：[简体中文](../../README.md) · [English](../../README.en.md)。更多语言版本即将上线；本目录的详细文档目前以中文为主。
+
 ## Release notes
 
 完整版本列表见 [release-notes/](release-notes/README.md)。
