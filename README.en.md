@@ -37,6 +37,16 @@ The browser interface connects to a standalone Node.js API, with source text, tr
 
 Here, a **chapter** is a table-of-contents group, while an **episode** is an individual installment with its own text. Downloads, translation, reading records, and initialization samples primarily operate on episodes.
 
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/bookshelf.webp">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./novel-processor/docs/assets/readme/bookshelf-dark.webp" />
+      <img src="./novel-processor/docs/assets/readme/bookshelf.webp" width="900" alt="The real bookshelf with two local novels, reading shortcuts, download progress, and reading status bars" />
+    </picture>
+  </a>
+  <br /><sub>Actual UI rendered with existing local library data. The preview follows your color scheme; click to enlarge.</sub>
+</p>
+
 <a id="translation-highlights"></a>
 ## More than isolated episode translation
 
@@ -48,6 +58,17 @@ Rather than translating each episode in isolation, `novel-processor` maintains a
 - **Keep the guide focused:** Merge duplicates and summarize selected sections with AI. Preview changes before applying them, with revision history available for restoration.
 
 The goal is to reduce naming drift, inconsistent style, and repetitive notes across a long novel. Results still depend on the model and source material, and human review remains important.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><a href="./novel-processor/docs/assets/readme/translation-guide.webp"><img src="./novel-processor/docs/assets/readme/translation-guide.webp" width="100%" alt="Saved character guide with fixed names, identities, speech styles, and source episodes" /></a></td>
+    <td width="50%" align="center"><a href="./novel-processor/docs/assets/readme/guide-maintenance.webp"><img src="./novel-processor/docs/assets/readme/guide-maintenance.webp" width="100%" alt="Guide maintenance with module selection, reasoning settings, and a summarization target" /></a></td>
+  </tr>
+  <tr>
+    <td align="center">A shared character and style reference</td>
+    <td align="center">Keep the guide focused with selective summarization</td>
+  </tr>
+</table>
 
 ## Contents
 
@@ -77,6 +98,11 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - Control concurrency, request intervals, timeouts, retries, and server-side cancellation.
 - Store content in JSON files and indexes in SQLite.
 
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/catalog.webp"><img src="./novel-processor/docs/assets/readme/catalog.webp" width="900" alt="Catalog with download statistics, range controls, and per-episode translation and reading icons" /></a>
+  <br /><sub>Downloads, translations, and reading status in one catalog.</sub>
+</p>
+
 ### Bookshelf and library management
 
 - Search by title or author; filter by platform, status, and tags.
@@ -85,6 +111,20 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - Start reading or resume the furthest episode marked as in progress.
 - See download, translation, and reading status icons in the catalog.
 - Move books to trash, restore them, permanently delete them, or synchronize indexes from disk.
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/library-filters.webp"><img src="./novel-processor/docs/assets/readme/library-filters.webp" width="900" alt="Bookshelf filters for publication status, downloads, reading progress, genres, and tags" /></a>
+  <br /><sub>Filter download and reading progress independently, and collapse filters or tags when not needed.</sub>
+</p>
+
+<details>
+<summary>See reading status editing by episode range</summary>
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/reading-progress.webp"><img src="./novel-processor/docs/assets/readme/reading-progress.webp" width="900" alt="Reading status dialog with start and end episodes and unread, reading, or read choices" /></a>
+</p>
+
+</details>
 
 ### Reader
 
@@ -95,6 +135,25 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - Hover on desktop or tap on mobile to view character notes.
 - Use semantic article markup and print styles; Safari decides whether Reader mode is available.
 - Share reading status between source text and translations.
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/reader.webp"><img src="./novel-processor/docs/assets/readme/reader.webp" width="900" alt="Warm-paper reader displaying a Chinese translation with serif typography and source-language switching" /></a>
+  <br /><sub>A continuous book-like layout that keeps the text in focus.</sub>
+</p>
+
+<details>
+<summary>See reading preferences and character notes</summary>
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/reader-settings.webp"><img src="./novel-processor/docs/assets/readme/reader-settings.webp" width="900" alt="Reader controls for font size, spacing, paper colors, and character hints" /></a>
+  <br /><sub>Adjust typography and colors directly in the reader.</sub>
+</p>
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/character-notes.webp"><img src="./novel-processor/docs/assets/readme/character-notes.webp" width="900" alt="A character-name hover displays identity and speech-style notes from the saved translation guide" /></a>
+  <br /><sub>Character hints reuse the saved translation guide.</sub>
+</p>
+
+</details>
 
 ### AI translation
 
@@ -107,12 +166,40 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - Monitor streamed output, bounded retries, JSON repair, and generation limits: 60 minutes total per generation and 180 seconds of upstream inactivity by default.
 - Apply validated guide updates and maintain the guide through deduplication, summarization, previews, and revision restoration.
 
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/episode-translation.webp"><img src="./novel-processor/docs/assets/readme/episode-translation.webp" width="900" alt="Episode translation settings with recent-reference count, range selection, and translated episode links" /></a>
+  <br /><sub>Select an episode range, set the reference count, and open existing translations from the list.</sub>
+</p>
+
+<details>
+<summary>See translation initialization settings</summary>
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/translation-setup.webp"><img src="./novel-processor/docs/assets/readme/translation-setup.webp" width="900" alt="Initialization form with model, sample size, reasoning level, synopsis and preface options, and requirements" /></a>
+  <br /><sub>Existing guide and configuration only; no paid model calls were started to create these screenshots.</sub>
+</p>
+
+</details>
+
 ### Themes and PWA
 
 - Light, dark, and system-following themes.
 - Responsive mobile and desktop layouts.
 - Apple Touch Icons, maskable / monochrome icons, a manifest, and a Service Worker.
 - App-shell caching only; authentication data, novel text, and AI streams are not cached for offline use.
+
+<table>
+  <tr>
+    <td width="66%" align="center"><a href="./novel-processor/docs/assets/readme/bookshelf-dark.webp"><img src="./novel-processor/docs/assets/readme/bookshelf-dark.webp" width="100%" alt="Dark-theme bookshelf with high-contrast labels and reading progress" /></a></td>
+    <td width="34%" align="center"><a href="./novel-processor/docs/assets/readme/reader-mobile-dark.webp"><img src="./novel-processor/docs/assets/readme/reader-mobile-dark.webp" width="100%" alt="Night-mode reader rendered in a 390px mobile viewport" /></a></td>
+  </tr>
+  <tr>
+    <td align="center">Desktop dark theme</td>
+    <td align="center">Mobile night reading</td>
+  </tr>
+</table>
+
+Screenshots show the current Chinese interface. The mobile image uses browser viewport emulation, not a verified native iOS installation or Liquid Glass effect. [Screenshot notes](./novel-processor/docs/assets/readme/README.md)
 
 <a id="sites"></a>
 ## Supported platforms

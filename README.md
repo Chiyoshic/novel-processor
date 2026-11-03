@@ -44,6 +44,17 @@ The browser interface connects to a standalone Node.js API, with source text, tr
 
 Here, a **chapter** is a table-of-contents group, while an **episode** is an individual installment with its own text. Downloads, translation, reading records, and initialization samples primarily operate on episodes.
 
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/bookshelf.webp">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./novel-processor/docs/assets/readme/bookshelf-dark.webp" />
+      <img src="./novel-processor/docs/assets/readme/bookshelf.webp" width="900" alt="真实书架界面：两部本地小说、继续阅读入口、下载进度与红黄绿阅读状态条" />
+    </picture>
+  </a>
+  <br /><sub>当前页面与本地已有书库的实拍图；随浏览环境展示浅色或深色预览。点击图片可查看原图。</sub>
+  <br /><sub>Actual UI rendered with existing local library data. The preview follows your color scheme; click to enlarge.</sub>
+</p>
+
 <a id="translation-highlights"></a>
 ## 不只是逐话直接翻译 / More than isolated episode translation
 
@@ -63,6 +74,17 @@ Rather than translating each episode in isolation, `novel-processor` maintains a
 目标是减少长篇翻译中的译名漂移、风格断层和重复说明；具体效果仍取决于模型与材料质量，需要人工复核。
 
 The goal is to reduce naming drift, inconsistent style, and repetitive notes across a long novel. Results still depend on the model and source material, and human review remains important.
+
+<table>
+  <tr>
+    <td width="50%" align="center"><a href="./novel-processor/docs/assets/readme/translation-guide.webp"><img src="./novel-processor/docs/assets/readme/translation-guide.webp" width="100%" alt="已保存的角色材料：固定译名、身份、说话风格与来源话号" /></a></td>
+    <td width="50%" align="center"><a href="./novel-processor/docs/assets/readme/guide-maintenance.webp"><img src="./novel-processor/docs/assets/readme/guide-maintenance.webp" width="100%" alt="材料压缩设置：模块多选、思考等级和目标体积" /></a></td>
+  </tr>
+  <tr>
+    <td align="center">角色、译名与文风有据可查<br /><sub>A shared character and style reference</sub></td>
+    <td align="center">按模块维护与压缩材料<br /><sub>Keep the guide focused with selective summarization</sub></td>
+  </tr>
+</table>
 
 ## 目录
 
@@ -92,6 +114,11 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - 并发、访问间隔、超时、重试和真实服务端取消；
 - JSON 文件保存正文，SQLite 保存索引。
 
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/catalog.webp"><img src="./novel-processor/docs/assets/readme/catalog.webp" width="900" alt="小说目录：下载统计、范围抓取、并发选择及逐话下载、翻译和阅读状态" /></a>
+  <br /><sub>抓取、译文与阅读状态在同一个目录里对齐展示。</sub>
+</p>
+
 ### 书架与作品管理
 
 - 标题/作者搜索、站点/状态/标签筛选；
@@ -100,6 +127,20 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - “开始阅读”和“继续阅读”；
 - 目录下载状态、翻译状态和阅读状态图标；
 - 回收站、恢复、永久删除和重建索引。
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/library-filters.webp"><img src="./novel-processor/docs/assets/readme/library-filters.webp" width="900" alt="书架筛选：连载状态、下载进度、阅读进度、题材与标签" /></a>
+  <br /><sub>下载到哪、读到哪，分开筛选；标签与筛选栏可独立收起。</sub>
+</p>
+
+<details>
+<summary>查看按话号范围编辑阅读状态</summary>
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/reading-progress.webp"><img src="./novel-processor/docs/assets/readme/reading-progress.webp" width="900" alt="阅读状态编辑弹窗：起止话号和未读、在读、已读选项" /></a>
+</p>
+
+</details>
 
 ### 阅读器
 
@@ -110,6 +151,25 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - 桌面悬浮、移动端点击查看人物简介；
 - Safari 阅读器模式语义结构和打印样式；
 - 原文与译文共用阅读状态。
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/reader.webp"><img src="./novel-processor/docs/assets/readme/reader.webp" width="900" alt="暖纸配色阅读器：中文译文、衬线排版、原文切换与阅读状态" /></a>
+  <br /><sub>连续书页式排版，让正文成为页面的主角。</sub>
+</p>
+
+<details>
+<summary>查看阅读设置与人物简介</summary>
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/reader-settings.webp"><img src="./novel-processor/docs/assets/readme/reader-settings.webp" width="900" alt="阅读设置：字号、字距、行距、段距、纸色和人物提示开关" /></a>
+  <br /><sub>排版与配色在当前阅读器中即时调整。</sub>
+</p>
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/character-notes.webp"><img src="./novel-processor/docs/assets/readme/character-notes.webp" width="900" alt="悬浮正文人物名称，查看来自初始化材料的角色身份与说话风格" /></a>
+  <br /><sub>正文中的人物提示复用已保存的翻译材料。</sub>
+</p>
+
+</details>
 
 ### AI 翻译
 
@@ -122,12 +182,40 @@ The goal is to reduce naming drift, inconsistent style, and repetitive notes acr
 - 流式输出、60 分钟总时限、180 秒空闲时限、重试和 JSON 修复；
 - 模型输出材料 CRUD、重复合并、压缩总结、预览应用和历史恢复。
 
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/episode-translation.webp"><img src="./novel-processor/docs/assets/readme/episode-translation.webp" width="900" alt="章节翻译配置：前文译文参考数量、话号范围、已译图标和批量勾选" /></a>
+  <br /><sub>选择要翻译的范围，配置前文参考数量；已译话直接显示译文入口。</sub>
+</p>
+
+<details>
+<summary>查看初始化任务配置</summary>
+
+<p align="center">
+  <a href="./novel-processor/docs/assets/readme/translation-setup.webp"><img src="./novel-processor/docs/assets/readme/translation-setup.webp" width="900" alt="初始化任务：模型、前多少话、思考等级、简介和前言选择以及翻译要求" /></a>
+  <br /><sub>截图展示现有材料和配置，不会为展示而触发付费模型调用。</sub>
+</p>
+
+</details>
+
 ### 主题与 PWA
 
 - 日间、夜间、跟随系统；
 - 手机和桌面响应式布局；
 - Apple Touch Icon、maskable / monochrome 图标、manifest 和 Service Worker；
 - Service Worker 只缓存应用壳，不缓存账户、正文和 AI 流。
+
+<table>
+  <tr>
+    <td width="66%" align="center"><a href="./novel-processor/docs/assets/readme/bookshelf-dark.webp"><img src="./novel-processor/docs/assets/readme/bookshelf-dark.webp" width="100%" alt="暗色书架：高对比度文字、状态标签与阅读进度" /></a></td>
+    <td width="34%" align="center"><a href="./novel-processor/docs/assets/readme/reader-mobile-dark.webp"><img src="./novel-processor/docs/assets/readme/reader-mobile-dark.webp" width="100%" alt="390px 手机视口下的夜读界面" /></a></td>
+  </tr>
+  <tr>
+    <td align="center">桌面暗色书架</td>
+    <td align="center">手机夜读</td>
+  </tr>
+</table>
+
+截图来自当前中文界面；手机图为浏览器移动视口渲染，不代表 iOS 原生安装或 Liquid Glass 效果验收。[截图说明](./novel-processor/docs/assets/readme/README.md)
 
 <a id="sites"></a>
 ## 支持平台
