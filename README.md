@@ -18,8 +18,21 @@
 
 > 当前文档对应 **v1.0.0**。当前支持小説家になろう，其他平台按计划逐步接入。正式版本与变更说明以 [Releases](https://github.com/Chiyoshic/novel-processor/releases) 为准。
 
+<a id="translation-highlights"></a>
+## 不只是逐话直接翻译
+
+相比把每一话单独交给模型，`novel-processor` 为长篇小说维护一份**可持续更新的翻译材料**，让后续翻译有据可循：
+
+- **先理解，再翻译**：从简介、前言和前若干话中初始化中文书名、剧情梗概、角色译名、术语与语言风格，建立统一基线。
+- **带着上下文继续**：每话结合最新材料与最近若干话的译文，帮助承接剧情、统一称呼和文风，而不是每次从零开始。
+- **材料随剧情生长**：模型在翻译时提出角色、别名、术语和规则的增补或修改，由程序校验后写回，供后续话使用。
+- **去重与压缩维护**：用 AI 合并重复信息、按模块压缩冗长说明；先预览再应用，保留历史恢复能力，避免材料无序膨胀。
+
+目标是减少长篇翻译中的译名漂移、风格断层和重复说明；具体效果仍取决于模型与材料质量，需要人工复核。
+
 ## 目录
 
+- [翻译亮点](#translation-highlights)
 - [项目介绍](#overview)
 - [功能总览](#features)
 - [支持平台](#sites)
@@ -338,6 +351,11 @@ npm run test:download
 - [HTTP API](./novel-processor/docs/api.md)
 - [前端开发 README](./novel-processor/frontend/README.md)
 - [后端开发 README](./novel-processor/backend/README.md)
+
+### Release notes
+
+- [版本发布记录](./novel-processor/docs/release-notes/README.md)
+- [v1.0.0 首个稳定版本](./novel-processor/docs/release-notes/v1.0.0.md)
 
 <a id="boundaries"></a>
 ## 合规与使用边界

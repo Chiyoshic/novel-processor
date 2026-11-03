@@ -2,6 +2,14 @@
 
 文档按使用功能、部署运维和源码开发组织。版本基线为 `v1.0.0`。
 
+## Release notes
+
+完整版本列表见 [release-notes/](release-notes/README.md)。
+
+| 版本 | 说明 |
+| --- | --- |
+| `v1.0.0` | [首个稳定版本](release-notes/v1.0.0.md) |
+
 ## 按功能阅读
 
 | 功能 | 文档 |
