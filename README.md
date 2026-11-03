@@ -1,20 +1,19 @@
 # novel-processor
 
 <p>
-  <img src="./novel-processor/frontend/public/app-icon.svg" width="88" height="88" alt="novel-processor 书本图标" />
+  <img style="display: block; margin: 0 auto;" src="./novel-processor/frontend/public/app-icon.svg" width="88" height="88" alt="novel-processor 书本图标" />
+  <div style="text-align: center; font-size: 1.5em; margin-top: 0.5em;">个人小说采集、整理、阅读与 AI 翻译工作台。</div>
 </p>
 
-个人小说采集、整理、阅读与 AI 翻译工作台。
-
-[![Version](https://img.shields.io/badge/version-v1.0.0-6a9ecd)](https://github.com/Chiyoshic/novel-processor/releases)
-[![License](https://img.shields.io/badge/license-MIT-79c2ac)](./LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.12-339933)](#requirements)
-[![Frontend](https://img.shields.io/badge/frontend-Vue%203%20%2B%20TypeScript-42b883)](./novel-processor/frontend)
-[![Backend](https://img.shields.io/badge/backend-Node.js%20%2B%20TypeScript-339933)](./novel-processor/backend)
-[![SQLite](https://img.shields.io/badge/storage-SQLite%20%2B%20JSON-003b57)](#storage)
-[![PWA](https://img.shields.io/badge/PWA-supported-8950ce)](./novel-processor/docs/pwa.md)
-
-> 本文面向 **v1.0.0**。当前内置小説家になろう（Syosetu）适配器，其他小说站点可以按照站点适配器契约扩展。正式版本与更新说明以 [Releases](https://github.com/Chiyoshic/novel-processor/releases) 为准。
+<p style="text-align: center;">
+  <a href="https://github.com/Chiyoshic/novel-processor/releases"><img src="https://img.shields.io/badge/version-v1.0.0-6a9ecd" alt="Version" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-79c2ac" alt="License" /></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/Node.js-%3E%3D22.12-339933" alt="Node.js" /></a>
+  <a href="./novel-processor/frontend"><img src="https://img.shields.io/badge/frontend-Vue%203%20%2B%20TypeScript-42b883" alt="Frontend" /></a>
+  <a href="./novel-processor/backend"><img src="https://img.shields.io/badge/backend-Node.js%20%2B%20TypeScript-339933" alt="Backend" /></a>
+  <a href="#storage"><img src="https://img.shields.io/badge/storage-SQLite%20%2B%20JSON-003b57" alt="SQLite" /></a>
+  <a href="./novel-processor/docs/pwa.md"><img src="https://img.shields.io/badge/PWA-supported-8950ce" alt="PWA" /></a>
+</p>
 
 ## 目录
 
@@ -1041,4 +1040,3 @@ npm --prefix novel-processor/frontend run build
 Copyright (c) 2026 Chiyoshi
 
 MIT 协议适用于本仓库代码，不替代小说原作、译文、第三方服务、字体和其他资源各自的授权或使用条款。
-
