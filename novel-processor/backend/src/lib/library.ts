@@ -9,8 +9,8 @@
  * - 每个方法都接受 `AbortSignal`，支持 UI 上的「取消」；
  * - 每个方法都有 `onProgress`，可直接绑定进度条。
  *
- * 浏览器直连站点的前提：站点不返回 CORS 头，需经同源代理（Vite server.proxy
- * 或自建 Node 服务）转发。见 docs/api.md 的「部署形态」一节。
+ * 前端不直接访问站点；由独立 Node API 统一执行采集、限速、取消和落盘。
+ * 架构说明见仓库 `docs/development/01-architecture.md`。
  */
 import { FetchHttpClient } from './http'
 import { NovelFetcher } from './pipeline'
