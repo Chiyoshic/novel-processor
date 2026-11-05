@@ -8,6 +8,7 @@ import type { MaintenancePreview } from '../../shared/brief-maintenance'
 import { dirname, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { NovelLibrary } from '../src/lib/library'
+import { mapLimit } from '../src/lib/concurrency'
 import type { EpisodeStore } from '../src/lib/store'
 import type { NovelRef, NovelRecord } from '../src/lib/types'
 import { LibraryDb } from './db'
@@ -500,7 +501,15 @@ export function createLibraryApiHandler(deps: LibraryApiDeps) {
             )
             return
           }
-          sendJson(res, 200, record)
+          // 译文保存在单话文件，目录 JSON 不写入衍生字段。只读取有译文记录的话，
+          // 并限制并发，避免长篇小说一次性打开大量文件。
+          const translatedIndices = new Set(db.listEpisodeTranslations(site, novelId).filter(item => item.hasTranslation).map(item => item.index))
+          const episodes = await mapLimit(record.episodes, 16, async episode => {
+            const content = translatedIndices.has(episode.index) ? await store.read(ref, episode.index) : null
+            const title = content?.translation?.title
+            return { ...episode, translatedTitle: typeof title === 'string' && title.trim() ? title.trim() : null }
+          })
+          sendJson(res, 200, { ...record, episodes })
           return
         }
 

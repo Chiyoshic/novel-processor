@@ -51,6 +51,10 @@ const rangeInput = ref('')
 const concurrency = defineModel<number>('concurrency', { default: 4 })
 const collapsed = ref<Set<string>>(new Set())
 const readCollapseActive = ref(false)
+const showTranslatedTitles = ref(false)
+function episodeTitle(episode: Episode): string {
+  return showTranslatedTitles.value && episode.translatedTitle?.trim() || episode.title
+}
 const collapsedBeforeRead = ref<Set<string> | null>(null)
 const readPrefixIndices = ref(new Set<number>())
 const READ_PREFIX_KEY = 'read-prefix'
@@ -219,6 +223,7 @@ watch(
     collapsedBeforeRead.value = null
     rangeInput.value = ''
     summaryOpen.value = false
+    showTranslatedTitles.value = false
   },
   { immediate: true },
 )
@@ -338,6 +343,9 @@ watch(
           {{ readCollapseActive ? '恢复全部' : '折叠已读' }}
           <template #icon><span class="contents-toggle-icon contents-toggle-icon--read" /></template>
         </CompactButton>
+        <button class="title-translation-toggle" type="button" :class="{ 'title-translation-toggle--active': showTranslatedTitles }" :aria-pressed="showTranslatedTitles" :aria-label="showTranslatedTitles ? '显示原文标题' : '显示译文标题'" :title="showTranslatedTitles ? '显示原文标题' : '显示译文标题'" @click="showTranslatedTitles = !showTranslatedTitles">
+          <span class="title-translation-toggle__icon" aria-hidden="true" />
+        </button>
       </div>
     </div>
 
@@ -362,7 +370,7 @@ watch(
               @click="emit('open', episode.index)"
             >
               <span class="ep-index">{{ String(episode.index).padStart(3, '0') }}</span>
-              <span class="ep-title serif" :lang="lang"><span class="ep-title-text" :title="episode.title">{{ episode.title }}</span><span v-if="translationStates.get(episode.index)?.hasTranslation" class="translation-state translated" role="img" aria-label="已翻译" title="已翻译"><span class="translation-icon" aria-hidden="true" /></span></span>
+              <span class="ep-title serif" :lang="showTranslatedTitles && episode.translatedTitle?.trim() ? 'zh-CN' : lang"><span class="ep-title-text" :title="episodeTitle(episode)">{{ episodeTitle(episode) }}</span><span v-if="translationStates.get(episode.index)?.hasTranslation" class="translation-state translated" role="img" aria-label="已翻译" title="已翻译"><span class="translation-icon" aria-hidden="true" /></span></span>
               <span class="ep-date">{{ formatDate(episode.publishedAt) }}</span>
             </button>
             <div class="episode-status-actions">
@@ -655,6 +663,25 @@ watch(
   gap: 7px;
   font-size: 11px;
 }
+
+.title-translation-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--blue-soft);
+  color: var(--muted);
+  cursor: pointer;
+}
+.title-translation-toggle:hover { color: var(--blue-dark); }
+.title-translation-toggle--active, .title-translation-toggle--active:hover { background: var(--blue-dark); color: var(--white); }
+.title-translation-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.title-translation-toggle__icon { width: 15px; height: 15px; background: currentColor; -webkit-mask: url('/icons/translate.svg') center / contain no-repeat; mask: url('/icons/translate.svg') center / contain no-repeat; }
 
 .contents-toggle-icon {
   background: currentColor;

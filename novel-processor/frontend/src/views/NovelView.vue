@@ -23,6 +23,24 @@ const reading = ref<ReadingProgress | null>(null)
 const readingSaving = ref(false)
 const translations = ref<EpisodeTranslationStatus[]>([])
 let translationPoll: ReturnType<typeof setInterval> | undefined
+let catalogTranslationSignature = ''
+let refreshingTranslatedTitles = false
+function translationSignature(items: EpisodeTranslationStatus[]): string {
+  return JSON.stringify(items.filter(item => item.hasTranslation).map(item => [item.index, item.translatedAt, item.sourceHash]))
+}
+async function refreshTranslatedTitles(): Promise<void> {
+  const signature = translationSignature(translations.value)
+  if (!catalog.value || refreshingTranslatedTitles || signature === catalogTranslationSignature) return
+  refreshingTranslatedTitles = true
+  try {
+    const record = await api.catalog(props.site, props.novelId)
+    const titles = new Map(record.episodes.map(episode => [episode.index, episode.translatedTitle ?? null]))
+    if (catalog.value && record.source.site === catalog.value.source.site && record.source.novelId === catalog.value.source.novelId) {
+      catalog.value = { ...catalog.value, episodes: catalog.value.episodes.map(episode => ({ ...episode, translatedTitle: titles.get(episode.index) ?? null })) }
+      catalogTranslationSignature = signature
+    }
+  } finally { refreshingTranslatedTitles = false }
+}
 const busy = ref<string | null>(null)
 const concurrency = ref(4)
 const loading = ref(true)
@@ -63,8 +81,12 @@ async function load(): Promise<void> {
     catalog.value = record
     reading.value = readProgress
     translations.value = translated.episodes
+    // 目录和状态并行读取时，翻译可能恰好在两次响应之间完成。再核对一次标题，
+    // 后续仅在已保存译文的签名变化时重新读取。
+    catalogTranslationSignature = ''
     downloaded.value = new Set(progress.indices)
     job.value = progress.job
+    void refreshTranslatedTitles().catch(() => {})
   } catch (err) {
     error.value = err instanceof Error ? err.message : '读取作品失败'
   } finally {
@@ -127,7 +149,8 @@ async function handleRefresh(): Promise<void> {
   refreshing.value = true
   try {
     const record = await api.refresh(props.site, props.novelId)
-    catalog.value = record
+    // 更新目录接口返回原始目录，重新读取附带译文标题的目录。
+    catalog.value = await api.catalog(props.site, props.novelId)
     reading.value = await api.readingProgress(props.site, props.novelId)
     error.value = null
     await refreshProgress()
@@ -158,7 +181,7 @@ onMounted(() => {
   pollTimer = setInterval(() => { if (job.value?.running || busy.value) void refreshProgress() }, 600)
   translationPoll = setInterval(() => {
     if (!job.value?.running && !busy.value) void refreshProgress()
-    void api.episodeTranslations(props.site, props.novelId).then((value) => { translations.value = value.episodes }).catch(() => {})
+    void api.episodeTranslations(props.site, props.novelId).then((value) => { translations.value = value.episodes; return refreshTranslatedTitles() }).catch(() => {})
   }, 3000)
 })
 onUnmounted(() => {

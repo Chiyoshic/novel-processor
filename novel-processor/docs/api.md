@@ -40,6 +40,8 @@ API 由后端提供，前端通过 `VITE_API_BASE` 直接访问。业务 API 默
 
 `GET /api/library` 支持 `q`、`site`、`status`、`genre`、`tag`、`progress`、`readingProgress`、`sort`、`trashed`、`page` 和 `limit`。
 
+`GET /api/library/:site/:id` 的每个 `episodes` 项包含 `translatedTitle`：已有译文时为中文标题，未翻译或标题不可用时为 `null`；原文标题仍保留在 `title`，目录文件不会被修改。
+
 ## 正文下载
 
 | 方法 | 路径 | 作用 |

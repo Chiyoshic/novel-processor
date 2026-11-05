@@ -95,6 +95,8 @@ export interface Episode {
   /** 从 1 开始的全書连续序号 */
   index: number
   title: string
+  /** 目录接口附带的中文译文标题；未翻译或不可用时为 null。 */
+  translatedTitle?: string | null
   /** 绝对 URL */
   url: string
   /** 站点内路径，例如 '/n4703ix/1/' */
